@@ -10,6 +10,8 @@ import { buildWaveformPeaks } from '@/shared/audio/waveform-peaks';
 import { playBufferSlice, stopPlayback } from '@/shared/audio/sample-playback';
 
 const MAX_DURATION_SECONDS = 6 * 60;
+const PAD_COUNT = 9;
+const LEAD_IN_SLICE_COUNT = 1;
 const PAD_KEYS = '123456789'.split('');
 const PAD_COLORS = [
   '#ff7a11',
@@ -34,7 +36,7 @@ export const PAD_KEY_CODES = [
   'Digit9'
 ] as const;
 function createDefaultPads(): Pad[] {
-  return Array.from({ length: 9 }, (_, index) => ({
+  return Array.from({ length: PAD_COUNT }, (_, index) => ({
     id: `pad-${index + 1}`,
     index,
     keyBinding: PAD_KEYS[index] ?? '',
@@ -135,6 +137,7 @@ export const useProjectStore = defineStore('project', () => {
   const pads = ref<Pad[]>(createDefaultPads());
   const slices = ref<Slice[]>([]);
   const selectedSliceId = ref<string | null>(null);
+  const hoveredPadId = ref<string | null>(null);
   const projectBpm = ref(120);
   const detectedSampleBpm = ref<number | null>(null);
   const pianoRollState = ref<PianoRollState>({
@@ -170,6 +173,15 @@ export const useProjectStore = defineStore('project', () => {
   const selectedNote = computed(
     () => pianoRollState.value.notes.find((note) => note.id === selectedNoteId.value) ?? null
   );
+  const padMappedSlices = computed(() => slices.value.slice(getPadSliceOffset()));
+
+  function getPadSliceOffset() {
+    return slices.value.length > pads.value.length ? LEAD_IN_SLICE_COUNT : 0;
+  }
+
+  function getFirstMappedSliceId() {
+    return padMappedSlices.value[0]?.id ?? slices.value[0]?.id ?? null;
+  }
 
   async function loadAudioFile(file: File) {
     errorMessage.value = '';
@@ -186,9 +198,13 @@ export const useProjectStore = defineStore('project', () => {
       audioBuffer.value = decoded.audioBuffer;
       waveformPeaks.value = buildWaveformPeaks(decoded.audioBuffer, 768);
       pads.value = createDefaultPads();
-      slices.value = createEqualSlices(decoded.metadata.durationSeconds, 9, pads.value);
+      slices.value = createEqualSlices(
+        decoded.metadata.durationSeconds,
+        PAD_COUNT + LEAD_IN_SLICE_COUNT,
+        pads.value
+      );
       assignSlicesToPads();
-      selectedSliceId.value = slices.value[0]?.id ?? null;
+      selectedSliceId.value = getFirstMappedSliceId();
       detectedSampleBpm.value = detectApproximateBpm(decoded.audioBuffer);
       projectBpm.value = detectedSampleBpm.value;
       pianoRollState.value.notes = [];
@@ -217,6 +233,10 @@ export const useProjectStore = defineStore('project', () => {
     selectedSliceId.value = sliceId;
   }
 
+  function setHoveredPad(padId: string | null) {
+    hoveredPadId.value = padId;
+  }
+
   function selectNote(noteId: string | null) {
     selectedNoteId.value = noteId;
   }
@@ -230,15 +250,17 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   function assignSlicesToPads() {
+    const offset = getPadSliceOffset();
+
     pads.value = pads.value.map((pad, index) => ({
       ...pad,
-      sliceId: slices.value[index]?.id
+      sliceId: slices.value[index + offset]?.id
     }));
 
     slices.value = slices.value.map((slice, index) => ({
       ...slice,
-      padId: pads.value[index]?.id,
-      color: PAD_COLORS[index % PAD_COLORS.length]
+      padId: pads.value[index - offset]?.id,
+      color: index >= offset ? PAD_COLORS[(index - offset) % PAD_COLORS.length] : undefined
     }));
   }
 
@@ -336,8 +358,8 @@ export const useProjectStore = defineStore('project', () => {
       .filter((value) => value > 0.02 && value < sampleFile.value!.durationSeconds - 0.02);
     slices.value = rebuildSlicesFromMarkers(markers, sampleFile.value.durationSeconds, pads.value);
     assignSlicesToPads();
-    const targetSlice = slices.value.find((slice) => time >= slice.startTime && time < slice.endTime);
-    selectedSliceId.value = targetSlice?.id ?? slices.value[0]?.id ?? null;
+    const targetSlice = padMappedSlices.value.find((slice) => time >= slice.startTime && time < slice.endTime);
+    selectedSliceId.value = targetSlice?.id ?? getFirstMappedSliceId();
     isAddingSlice.value = false;
   }
 
@@ -370,7 +392,7 @@ export const useProjectStore = defineStore('project', () => {
 
     slices.value = rebuildSlicesFromMarkers(markers, sampleFile.value.durationSeconds, pads.value);
     assignSlicesToPads();
-    selectedSliceId.value = slices.value[0]?.id ?? null;
+    selectedSliceId.value = getFirstMappedSliceId();
   }
 
   function deleteAllSliceMarkers() {
@@ -380,7 +402,7 @@ export const useProjectStore = defineStore('project', () => {
 
     slices.value = rebuildSlicesFromMarkers([], sampleFile.value.durationSeconds, pads.value);
     assignSlicesToPads();
-    selectedSliceId.value = slices.value[0]?.id ?? null;
+    selectedSliceId.value = getFirstMappedSliceId();
     isAddingSlice.value = false;
   }
 
@@ -389,9 +411,13 @@ export const useProjectStore = defineStore('project', () => {
       return;
     }
 
-    slices.value = createEqualSlices(sampleFile.value.durationSeconds, parts, pads.value);
+    slices.value = createEqualSlices(
+      sampleFile.value.durationSeconds,
+      parts + LEAD_IN_SLICE_COUNT,
+      pads.value
+    );
     assignSlicesToPads();
-    selectedSliceId.value = slices.value[0]?.id ?? null;
+    selectedSliceId.value = getFirstMappedSliceId();
   }
 
   function smartSlice(parts: 9 | 18 | 27 = 9) {
@@ -402,11 +428,11 @@ export const useProjectStore = defineStore('project', () => {
     slices.value = createAutoSlicesFromWaveform(
       waveformPeaks.value,
       sampleFile.value.durationSeconds,
-      parts,
+      parts + LEAD_IN_SLICE_COUNT,
       pads.value
     );
     assignSlicesToPads();
-    selectedSliceId.value = slices.value[0]?.id ?? null;
+    selectedSliceId.value = getFirstMappedSliceId();
   }
 
   async function previewSlice(sliceId = selectedSliceId.value) {
@@ -856,6 +882,7 @@ export const useProjectStore = defineStore('project', () => {
     selectedSliceId,
     selectNote,
     selectSlice,
+    setHoveredPad,
     setActiveEditorTab,
     setZoom,
     sliceMarkers,
@@ -870,6 +897,7 @@ export const useProjectStore = defineStore('project', () => {
     triggerPad,
     updateProjectBpm,
     waveformPeaks,
+    hoveredPadId,
     zoom,
     metronomeEnabled
   };

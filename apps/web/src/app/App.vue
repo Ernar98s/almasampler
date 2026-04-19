@@ -4,6 +4,7 @@ import PadsPanel from '@/features/pads/components/PadsPanel.vue';
 import TransportSidePanel from '@/features/transport/components/TransportSidePanel.vue';
 import WaveformWorkspace from '@/features/waveform-editor/components/WaveformWorkspace.vue';
 import { useProjectStore } from '@/entities/project/project.store';
+import logoUrl from '@/assets/almasampler-logo.png';
 import { useSpaceWaveformToggle } from './use-space-waveform-toggle';
 
 const projectStore = useProjectStore();
@@ -21,6 +22,10 @@ const {
   <div class="app-shell">
     <div class="app-frame">
       <div class="device-shell">
+        <div class="app-logo">
+          <img :src="logoUrl" alt="Almasampler" class="app-logo__image" />
+        </div>
+
         <main class="device-content">
           <div class="workspace-stack">
             <WaveformWorkspace
@@ -32,8 +37,6 @@ const {
 
             <PadsPanel />
           </div>
-
-          <TransportSidePanel />
         </main>
 
         <p v-if="isExporting" class="device-status">Rendering WAV export...</p>
@@ -41,6 +44,8 @@ const {
           {{ errorMessage }}
         </p>
       </div>
+
+      <TransportSidePanel />
     </div>
   </div>
 </template>

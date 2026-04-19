@@ -9,7 +9,7 @@ const props = defineProps<{
 }>();
 
 const projectStore = useProjectStore();
-const { sampleFile, selectedSliceId, sliceMarkers, slices, isAddingSlice } = storeToRefs(projectStore);
+const { sampleFile, selectedSliceId, sliceMarkers, slices, isAddingSlice, hoveredPadId } = storeToRefs(projectStore);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const viewportRef = ref<HTMLDivElement | null>(null);
 const draggingMarkerIndex = ref<number | null>(null);
@@ -119,10 +119,11 @@ function drawWaveform() {
     const x = timeToX(markerTime, width);
     const markerSlice = slices.value[index + 1];
     const isSelected = markerSlice?.id === selectedSliceId.value;
+    const isHovered = markerSlice?.padId === hoveredPadId.value;
     const markerColor = markerSlice?.color ?? '#ff8c94';
 
     context.strokeStyle = markerColor;
-    context.lineWidth = isSelected ? 2 : 1;
+    context.lineWidth = isHovered ? 3 : isSelected ? 2 : 1;
     context.beginPath();
     context.moveTo(x + 0.5, 0);
     context.lineTo(x + 0.5, height);
@@ -130,9 +131,9 @@ function drawWaveform() {
 
     context.fillStyle = markerColor;
     context.beginPath();
-    context.moveTo(x - 6, 10);
-    context.lineTo(x + 6, 10);
-    context.lineTo(x, 20);
+    context.moveTo(x - (isHovered ? 8 : 6), 10);
+    context.lineTo(x + (isHovered ? 8 : 6), 10);
+    context.lineTo(x, isHovered ? 24 : 20);
     context.closePath();
     context.fill();
   });
@@ -264,7 +265,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointerup', stopDragging);
 });
 
-watch(() => [props.waveformPeaks, props.zoom, sliceMarkers.value, selectedSliceId.value], drawWaveform, { deep: false });
+watch(() => [props.waveformPeaks, props.zoom, sliceMarkers.value, selectedSliceId.value, hoveredPadId.value], drawWaveform, { deep: false });
 </script>
 
 <template>

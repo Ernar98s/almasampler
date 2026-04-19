@@ -53,14 +53,32 @@ button {
 }
 
 .app-frame {
-  width: min(1280px, 100%);
-  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 188px;
+  gap: 18px;
+  align-items: start;
+  width: 100%;
+  margin: 0;
 }
 
 .device-shell {
   display: flex;
   flex-direction: column;
   gap: 18px;
+  max-width: 1060px;
+}
+
+.app-logo {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.app-logo__image {
+  display: block;
+  width: min(240px, 24vw);
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
 }
 
 .transport-bar,
@@ -222,10 +240,7 @@ button {
 }
 
 .device-content {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 188px;
-  gap: 18px;
-  align-items: start;
+  display: block;
 }
 
 .workspace-stack {
@@ -422,7 +437,8 @@ button {
   cursor: pointer;
   transition:
     transform 120ms ease,
-    border-color 120ms ease;
+    border-color 120ms ease,
+    background 120ms ease;
 }
 
 .pad-button:hover {
@@ -455,18 +471,33 @@ button {
   border-color: rgba(242, 165, 65, 0.72);
 }
 
+.pad-button--hovered {
+  cursor: pointer;
+  border-color: rgba(240, 138, 75, 0.72);
+}
+
+.pad-button:active {
+  cursor: grabbing;
+}
+
 .transport-side-panel {
   position: sticky;
   top: 24px;
   display: flex;
   flex-direction: column;
   gap: 14px;
+  min-height: calc(100vh - 48px);
+  padding: 14px;
+  background: #ffffff;
 }
 
 .transport-side-card {
   display: flex;
   flex-direction: column;
+  flex: 1 1 0;
   gap: 12px;
+  background: #ffffff;
+  border-color: var(--line);
 }
 
 .transport-side-value {
@@ -484,12 +515,17 @@ button {
 
 .transport-side-toggle {
   flex-direction: column;
+  flex: 1 1 0;
   gap: 4px;
   width: 100%;
-  min-height: 76px;
+  min-height: 0;
   padding: 16px;
   text-align: center;
   font-weight: 700;
+  justify-content: center;
+  background: #ffffff;
+  border-color: var(--line);
+  color: var(--ink);
 }
 
 .transport-side-toggle__title {
@@ -502,7 +538,78 @@ button {
   color: var(--ink-soft);
 }
 
+.transport-side-panel .transport-label {
+  color: var(--ink-soft);
+}
+
+.transport-side-panel .transport-stepper__button {
+  background: #ffffff;
+  color: var(--ink);
+  border-color: var(--line);
+}
+
 .transport-side-link {
+  text-decoration: none;
+}
+
+.support-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(34, 49, 63, 0.48);
+}
+
+.support-modal__card {
+  position: relative;
+  width: min(420px, 100%);
+  padding: 18px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  box-shadow: 0 18px 48px rgba(34, 49, 63, 0.18);
+}
+
+.support-modal__close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  min-height: 34px;
+  padding: 0 10px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.support-modal__gif {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-bottom: 14px;
+  object-fit: cover;
+}
+
+.support-modal__copy h3 {
+  margin: 0 0 8px;
+  color: var(--ink);
+}
+
+.support-modal__copy p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.55;
+}
+
+.support-modal__donate {
+  margin-top: 10px;
+}
+
+.support-modal__copy a {
+  color: var(--tangerine);
+  font-weight: 700;
   text-decoration: none;
 }
 
@@ -560,6 +667,7 @@ button {
     padding: 16px;
   }
 
+  .app-frame,
   .transport-bar,
   .device-content {
     grid-template-columns: 1fr;
@@ -576,6 +684,7 @@ button {
 
   .transport-side-panel {
     position: static;
+    min-height: auto;
   }
 
   .pads-grid--row {
@@ -586,6 +695,10 @@ button {
 @media (max-width: 640px) {
   .app-shell {
     padding: 12px;
+  }
+
+  .app-logo__image {
+    width: min(180px, 52vw);
   }
 
   .transport-controls--overview {

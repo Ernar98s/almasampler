@@ -4,7 +4,7 @@ import { storeToRefs } from 'pinia';
 import { PAD_KEY_CODES, useProjectStore } from '@/entities/project/project.store';
 
 const projectStore = useProjectStore();
-const { pads, selectedSliceId, slices, hasLoadedSample } = storeToRefs(projectStore);
+const { pads, selectedSliceId, slices, hasLoadedSample, hoveredPadId } = storeToRefs(projectStore);
 
 const padView = computed(() =>
   pads.value.slice(0, 9).map((pad, index) => ({
@@ -63,10 +63,15 @@ onBeforeUnmount(() => {
         v-for="pad in padView"
         :key="pad.id"
         class="pad-button"
-        :class="{ 'pad-button--active': pad.slice?.id === selectedSliceId }"
+        :class="{
+          'pad-button--active': pad.slice?.id === selectedSliceId,
+          'pad-button--hovered': hoveredPadId === pad.id
+        }"
         :style="pad.slice?.id === selectedSliceId ? getPadActiveStyle(pad.slice?.color) : undefined"
         :disabled="!pad.slice"
         @click="projectStore.triggerPad(pad.id)"
+        @mouseenter="projectStore.setHoveredPad(pad.id)"
+        @mouseleave="projectStore.setHoveredPad(null)"
       >
         <strong>{{ `Pad ${pad.index + 1}` }}</strong>
       </button>
