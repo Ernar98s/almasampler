@@ -29,13 +29,41 @@ async function chokeExclusiveVoice(audioContext: AudioContext) {
   activeExclusiveVoice = null;
 }
 
+function hardStopSource(
+  source: AudioBufferSourceNode,
+  gainNode?: GainNode | null
+) {
+  try {
+    source.onended = null;
+    source.stop();
+  } catch {
+    // Ignore invalid state when a source has already ended.
+  }
+
+  try {
+    source.disconnect();
+  } catch {
+    // Ignore duplicate disconnects.
+  }
+
+  try {
+    gainNode?.disconnect();
+  } catch {
+    // Ignore duplicate disconnects.
+  }
+}
+
 export async function stopPlayback() {
-  const audioContext = await getAudioContext();
-  await chokeExclusiveVoice(audioContext);
+  await getAudioContext();
+
+  if (activeExclusiveVoice) {
+    hardStopSource(activeExclusiveVoice.source, activeExclusiveVoice.gainNode);
+    activeSources.delete(activeExclusiveVoice.source);
+    activeExclusiveVoice = null;
+  }
 
   for (const source of activeSources) {
-    source.stop();
-    source.disconnect();
+    hardStopSource(source);
   }
 
   activeSources.clear();

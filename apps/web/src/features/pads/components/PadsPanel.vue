@@ -5,25 +5,24 @@ import { PAD_KEY_CODES, useProjectStore } from '@/entities/project/project.store
 
 const projectStore = useProjectStore();
 const { pads, selectedSliceId, slices, hasLoadedSample } = storeToRefs(projectStore);
-const padPalette = [
-  'pad-theme-orange',
-  'pad-theme-amber',
-  'pad-theme-lime',
-  'pad-theme-green',
-  'pad-theme-red',
-  'pad-theme-magenta',
-  'pad-theme-cyan',
-  'pad-theme-chartreuse',
-  'pad-theme-gold'
-];
 
 const padView = computed(() =>
   pads.value.slice(0, 9).map((pad, index) => ({
     ...pad,
-    slice: slices.value.find((slice) => slice.id === pad.sliceId),
-    colorClass: padPalette[index % padPalette.length]
+    slice: slices.value.find((slice) => slice.id === pad.sliceId)
   }))
 );
+
+function getPadActiveStyle(color?: string) {
+  if (!color) {
+    return undefined;
+  }
+
+  return {
+    background: color,
+    borderColor: color
+  };
+}
 
 function onKeydown(event: KeyboardEvent) {
   if (!hasLoadedSample.value) {
@@ -59,20 +58,17 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="pad-section">
-    <div class="pads-grid pads-grid--nine">
+    <div class="pads-grid pads-grid--row">
       <button
         v-for="pad in padView"
         :key="pad.id"
         class="pad-button"
-        :class="[pad.colorClass, { 'pad-button--active': pad.slice?.id === selectedSliceId }]"
+        :class="{ 'pad-button--active': pad.slice?.id === selectedSliceId }"
+        :style="pad.slice?.id === selectedSliceId ? getPadActiveStyle(pad.slice?.color) : undefined"
         :disabled="!pad.slice"
         @click="projectStore.triggerPad(pad.id)"
       >
-        <strong>{{ pad.index + 1 }}</strong>
-        <span>{{ pad.keyBinding.toUpperCase() }}</span>
-        <small>
-          {{ pad.slice?.label ?? 'Empty' }}
-        </small>
+        <strong>{{ `Pad ${pad.index + 1}` }}</strong>
       </button>
     </div>
   </div>

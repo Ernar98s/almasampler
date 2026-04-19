@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia';
 import { useProjectStore } from '@/entities/project/project.store';
-import { useHoldStepper } from '@/shared/use-hold-stepper';
 
 const projectStore = useProjectStore();
 const {
@@ -9,66 +8,36 @@ const {
   projectBpm,
   metronomeEnabled,
   detectedSampleBpm,
-  recordedHitCount,
-  isRecording,
   isExporting
 } =
   storeToRefs(projectStore);
-
-const bpmStepper = useHoldStepper((delta) => {
-  projectStore.updateProjectBpm(projectBpm.value + delta);
-});
 </script>
 
 <template>
   <header class="transport-bar">
-    <div class="transport-brand">Almasampler</div>
+    <div class="transport-brand-block">
+      <div class="transport-brand">Almasampler</div>
+      <p class="transport-copy">
+        Lightweight browser sampler for chopping, pad performance and WAV bounce.
+      </p>
+    </div>
 
-    <div class="transport-controls">
-      <div class="transport-cluster">
-        <span class="transport-label">BPM</span>
-        <div class="transport-stepper">
-          <button
-            class="transport-stepper__button"
-            :disabled="!hasLoadedSample"
-            @pointerdown.prevent="bpmStepper.start(-1)"
-            @pointerup="bpmStepper.stop()"
-            @pointerleave="bpmStepper.stop()"
-            @pointercancel="bpmStepper.stop()"
-          >
-            -
-          </button>
-          <strong>{{ projectBpm }}</strong>
-          <button
-            class="transport-stepper__button"
-            :disabled="!hasLoadedSample"
-            @pointerdown.prevent="bpmStepper.start(1)"
-            @pointerup="bpmStepper.stop()"
-            @pointerleave="bpmStepper.stop()"
-            @pointercancel="bpmStepper.stop()"
-          >
-            +
-          </button>
-        </div>
+    <div class="transport-controls transport-controls--overview">
+      <div class="transport-cluster transport-cluster--pill">
+        <span class="transport-label">Sample BPM</span>
+        <strong>{{ projectBpm }} BPM</strong>
+        <span class="transport-cluster__meta">
+          Detected {{ detectedSampleBpm ?? '--' }} BPM
+        </span>
       </div>
 
-      <button
-        class="transport-toggle"
-        :class="{ 'transport-toggle--active': metronomeEnabled }"
-        :disabled="!hasLoadedSample"
-        @click="projectStore.toggleMetronome()"
-      >
-        Metronome
-      </button>
-
-      <button
-        class="transport-toggle"
-        :class="{ 'transport-recording': isRecording }"
-        :disabled="!hasLoadedSample || isExporting"
-        @click="isRecording ? projectStore.stopRecording() : projectStore.startRecording()"
-      >
-        {{ isRecording ? 'Recording...' : 'Record' }}
-      </button>
+      <div class="transport-cluster transport-cluster--pill">
+        <span class="transport-label">Metronome</span>
+        <strong>Count 4</strong>
+        <span class="transport-cluster__meta">
+          {{ metronomeEnabled ? 'Enabled' : 'Disabled' }}
+        </span>
+      </div>
 
       <button
         class="transport-secondary"
@@ -77,12 +46,6 @@ const bpmStepper = useHoldStepper((delta) => {
       >
         Stop
       </button>
-
-      <div class="transport-mini-readout">
-        <span>Sample {{ detectedSampleBpm ?? '--' }}</span>
-        <span>{{ isRecording ? `Hits ${recordedHitCount}` : 'Sampler Ready' }}</span>
-        <span v-if="isExporting">WAV...</span>
-      </div>
     </div>
   </header>
 </template>

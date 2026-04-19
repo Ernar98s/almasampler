@@ -4,7 +4,7 @@ import { useProjectStore } from '@/entities/project/project.store';
 import { useHoldStepper } from '@/shared/use-hold-stepper';
 
 const projectStore = useProjectStore();
-const { hasLoadedSample, projectBpm, metronomeEnabled } =
+const { hasLoadedSample, projectBpm, metronomeEnabled, isRecording, isExporting } =
   storeToRefs(projectStore);
 
 const bpmStepper = useHoldStepper((delta) => {
@@ -15,7 +15,7 @@ const bpmStepper = useHoldStepper((delta) => {
 <template>
   <aside class="transport-side-panel">
     <div class="transport-side-card">
-      <span class="transport-label">BPM</span>
+      <span class="transport-label">Tempo</span>
       <div class="transport-side-value">{{ projectBpm }}</div>
       <div class="transport-side-buttons">
         <button
@@ -47,7 +47,26 @@ const bpmStepper = useHoldStepper((delta) => {
       :disabled="!hasLoadedSample"
       @click="projectStore.toggleMetronome()"
     >
-      Metronome
+      <span class="transport-side-toggle__title">Metronome</span>
+      <span class="transport-side-toggle__meta">{{ projectBpm }} BPM · Count 4 beats</span>
     </button>
+
+    <button
+      class="transport-side-toggle"
+      :class="{ 'transport-recording': isRecording }"
+      :disabled="!hasLoadedSample || isExporting"
+      @click="isRecording ? projectStore.stopRecording() : projectStore.startRecording()"
+    >
+      {{ isRecording ? 'Recording...' : 'Record' }}
+    </button>
+
+    <a
+      class="transport-side-toggle transport-side-link"
+      href="https://github.com/Ernar98s/almasampler"
+      target="_blank"
+      rel="noreferrer"
+    >
+      Contact / Support
+    </a>
   </aside>
 </template>

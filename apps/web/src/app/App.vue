@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia';
 import PadsPanel from '@/features/pads/components/PadsPanel.vue';
-import SampleUploadPanel from '@/features/sample-upload/components/SampleUploadPanel.vue';
-import TransportBar from '@/features/transport/components/TransportBar.vue';
 import TransportSidePanel from '@/features/transport/components/TransportSidePanel.vue';
 import WaveformWorkspace from '@/features/waveform-editor/components/WaveformWorkspace.vue';
 import { useProjectStore } from '@/entities/project/project.store';
@@ -23,19 +21,19 @@ const {
   <div class="app-shell">
     <div class="app-frame">
       <div class="device-shell">
-        <TransportBar />
-
         <main class="device-content">
-          <SampleUploadPanel />
+          <div class="workspace-stack">
+            <WaveformWorkspace
+              class="device-panel"
+              :waveform-peaks="waveformPeaks"
+              :duration-seconds="sampleFile?.durationSeconds ?? 0"
+              :zoom="zoom"
+            />
 
-          <WaveformWorkspace
-            class="device-panel"
-            :waveform-peaks="waveformPeaks"
-            :duration-seconds="sampleFile?.durationSeconds ?? 0"
-            :zoom="zoom"
-          />
+            <PadsPanel />
+          </div>
 
-          <PadsPanel />
+          <TransportSidePanel />
         </main>
 
         <p v-if="isExporting" class="device-status">Rendering WAV export...</p>
@@ -43,8 +41,6 @@ const {
           {{ errorMessage }}
         </p>
       </div>
-
-      <TransportSidePanel />
     </div>
   </div>
 </template>

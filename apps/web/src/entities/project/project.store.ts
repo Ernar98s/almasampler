@@ -1,8 +1,9 @@
 import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
 import type { NoteEvent, Pad, PianoRollState, SampleFile, Slice } from '@almasampler/shared';
-import { decodeAudioFile, getAudioContext, getMasterGainNode } from '@/shared/audio/decode-audio-file';
+import { decodeAudioFile } from '@/shared/audio/decode-audio-file';
 import { detectApproximateBpm } from '@/shared/audio/detect-bpm';
+import { playMetronomeSample } from '@/shared/audio/metronome-sample';
 import { renderMonophonicPerformanceToWav } from '@/shared/audio/render-monophonic-performance';
 import { renderArrangementToWav } from '@/shared/audio/render-arrangement';
 import { buildWaveformPeaks } from '@/shared/audio/waveform-peaks';
@@ -154,6 +155,7 @@ export const useProjectStore = defineStore('project', () => {
   let sequenceTimeouts: number[] = [];
   let sequenceCursorInterval: number | null = null;
   let recordingStartedAt = 0;
+  let passiveMetronomeTimeout: number | null = null;
   let recordingMetronomeInterval: number | null = null;
   const recordedHits = ref<Array<{ padId: string; startMs: number; endMs: number | null }>>([]);
   const recordedHitCount = computed(() => recordedHits.value.length);
@@ -208,7 +210,7 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   function setZoom(nextZoom: number) {
-    zoom.value = Math.min(8, Math.max(1, nextZoom));
+    zoom.value = Math.min(6, Math.max(1, nextZoom));
   }
 
   function selectSlice(sliceId: string | null) {
@@ -242,14 +244,55 @@ export const useProjectStore = defineStore('project', () => {
 
   function updateProjectBpm(nextBpm: number) {
     projectBpm.value = Math.min(220, Math.max(40, Math.round(nextBpm || 120)));
+
+    if (metronomeEnabled.value && !isRecording.value && !isSequencePlaying.value) {
+      restartPassiveMetronome();
+    }
   }
 
   function toggleMetronome() {
     metronomeEnabled.value = !metronomeEnabled.value;
 
     if (metronomeEnabled.value) {
-      void playMetronomeClick(true);
+      restartPassiveMetronome();
+      return;
     }
+
+    stopPassiveMetronome();
+
+    if (recordingMetronomeInterval !== null) {
+      window.clearInterval(recordingMetronomeInterval);
+      recordingMetronomeInterval = null;
+    }
+  }
+
+  function stopPassiveMetronome() {
+    if (passiveMetronomeTimeout !== null) {
+      window.clearTimeout(passiveMetronomeTimeout);
+      passiveMetronomeTimeout = null;
+    }
+  }
+
+  function schedulePassiveMetronomeBeat(beatIndex: number) {
+    if (!metronomeEnabled.value || isRecording.value || isSequencePlaying.value) {
+      passiveMetronomeTimeout = null;
+      return;
+    }
+
+    void playMetronomeClick(beatIndex % pianoRollState.value.beatsPerBar === 0);
+    passiveMetronomeTimeout = window.setTimeout(() => {
+      schedulePassiveMetronomeBeat(beatIndex + 1);
+    }, (60 * 1000) / projectBpm.value);
+  }
+
+  function restartPassiveMetronome() {
+    stopPassiveMetronome();
+
+    if (!metronomeEnabled.value || isRecording.value || isSequencePlaying.value) {
+      return;
+    }
+
+    schedulePassiveMetronomeBeat(0);
   }
 
   function getSlicePlaybackRate(slice: Slice) {
@@ -461,6 +504,7 @@ export const useProjectStore = defineStore('project', () => {
     }
 
     stopSequence();
+    stopPassiveMetronome();
     errorMessage.value = '';
 
     if (recordingMetronomeInterval !== null) {
@@ -488,10 +532,16 @@ export const useProjectStore = defineStore('project', () => {
     }
 
     isRecording.value = false;
+    isPreviewPlaying.value = false;
+    await stopPlayback();
 
     if (recordingMetronomeInterval !== null) {
       window.clearInterval(recordingMetronomeInterval);
       recordingMetronomeInterval = null;
+    }
+
+    if (metronomeEnabled.value) {
+      restartPassiveMetronome();
     }
 
     const finalElapsedMs = Math.max(0, performance.now() - recordingStartedAt);
@@ -661,27 +711,9 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function playMetronomeClick(isAccent: boolean) {
-    const audioContext = await getAudioContext();
-
-    if (audioContext.state === 'suspended') {
-      await audioContext.resume();
-    }
-
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    const masterGainNode = await getMasterGainNode();
-    const now = audioContext.currentTime;
-
-    oscillator.type = 'triangle';
-    oscillator.frequency.value = isAccent ? 1480 : 980;
-    gainNode.gain.setValueAtTime(0.0001, now);
-    gainNode.gain.exponentialRampToValueAtTime(isAccent ? 0.15 : 0.1, now + 0.003);
-    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
-
-    oscillator.connect(gainNode);
-    gainNode.connect(masterGainNode);
-    oscillator.start(now);
-    oscillator.stop(now + 0.085);
+    await playMetronomeSample({
+      gain: isAccent ? 0.62 : 0.48
+    });
   }
 
   async function playSequence() {
@@ -690,6 +722,7 @@ export const useProjectStore = defineStore('project', () => {
     }
 
     stopSequence();
+    stopPassiveMetronome();
     isSequencePlaying.value = true;
     activeEditorTab.value = 'piano-roll';
 
@@ -724,6 +757,10 @@ export const useProjectStore = defineStore('project', () => {
     isPreviewPlaying.value = false;
     playbackCursorBeat.value = -1;
     void stopPlayback();
+
+    if (metronomeEnabled.value && !isRecording.value) {
+      restartPassiveMetronome();
+    }
   }
 
   async function exportSequenceToWav() {

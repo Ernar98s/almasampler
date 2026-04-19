@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia';
 import { useProjectStore } from '@/entities/project/project.store';
+import SampleUploadPanel from '@/features/sample-upload/components/SampleUploadPanel.vue';
 import WaveformCanvas from './WaveformCanvas.vue';
 
 defineProps<{
@@ -15,52 +16,41 @@ const { hasLoadedSample, selectedSlice, slices, isAddingSlice } = storeToRefs(pr
 
 <template>
   <div class="stack waveform-panel">
-    <div class="waveform-panel__header">
-      <div>
-        <h2>Waveform</h2>
-        <p class="panel-copy">Canvas shell for the slice editor. Milestone 2 adds markers, playhead, and zoomed navigation.</p>
-      </div>
-      <div class="waveform-stats">
-        <span>{{ durationSeconds ? `${durationSeconds.toFixed(2)}s loaded` : 'No sample loaded' }}</span>
-        <span>{{ waveformPeaks.length }} peak bins</span>
-        <span>{{ slices.length }} slices</span>
-      </div>
-    </div>
-
-    <div class="waveform-toolbar">
-      <div class="waveform-zoom-controls">
-        <button class="ghost-action-button" :disabled="!hasLoadedSample || zoom <= 1" @click="projectStore.setZoom(zoom - 1)">
-          -
+    <template v-if="hasLoadedSample">
+      <div class="waveform-toolbar">
+        <button
+          class="action-button"
+          :class="{ 'toolbar-toggle-active': isAddingSlice }"
+          @click="projectStore.toggleAddSliceMode()"
+        >
+          {{ isAddingSlice ? 'Click Waveform...' : 'New Slice' }}
         </button>
-        <span class="waveform-zoom-label">Zoom {{ zoom }}x</span>
-        <button class="ghost-action-button" :disabled="!hasLoadedSample || zoom >= 8" @click="projectStore.setZoom(zoom + 1)">
-          +
+        <button class="action-button" @click="projectStore.smartSlice(9)">Auto flags</button>
+        <button
+          class="ghost-action-button"
+          :disabled="!selectedSlice || selectedSlice.startTime === 0"
+          @click="projectStore.deleteSelectedSliceMarker()"
+        >
+          Delete selected flag
+        </button>
+        <button class="ghost-action-button" :disabled="slices.length <= 1" @click="projectStore.deleteAllSliceMarkers()">
+          Delete all
         </button>
       </div>
-      <button
-        class="action-button"
-        :class="{ 'toolbar-toggle-active': isAddingSlice }"
-        :disabled="!hasLoadedSample"
-        @click="projectStore.toggleAddSliceMode()"
-      >
-        {{ isAddingSlice ? 'Click Waveform...' : 'New Slice' }}
-      </button>
-      <button class="action-button" :disabled="!hasLoadedSample" @click="projectStore.smartSlice(9)">Auto flags</button>
-      <button
-        class="ghost-action-button"
-        :disabled="!hasLoadedSample || !selectedSlice || selectedSlice.startTime === 0"
-        @click="projectStore.deleteSelectedSliceMarker()"
-      >
-        Delete selected flag
-      </button>
-      <button class="ghost-action-button" :disabled="!hasLoadedSample || slices.length <= 1" @click="projectStore.deleteAllSliceMarkers()">
-        Delete all
-      </button>
-      <button class="ghost-action-button" :disabled="!hasLoadedSample || !selectedSlice" @click="projectStore.previewSlice()">
-        Preview slice
-      </button>
-    </div>
 
-    <WaveformCanvas :waveform-peaks="waveformPeaks" :zoom="zoom" />
+      <div class="waveform-stage">
+        <div class="waveform-zoom-controls waveform-zoom-controls--floating">
+          <button class="waveform-zoom-button" :disabled="zoom <= 1" @click="projectStore.setZoom(zoom - 1)">
+            -
+          </button>
+          <span class="waveform-zoom-label">{{ zoom }}x</span>
+          <button class="waveform-zoom-button" :disabled="zoom >= 6" @click="projectStore.setZoom(zoom + 1)">
+            +
+          </button>
+        </div>
+        <WaveformCanvas :waveform-peaks="waveformPeaks" :zoom="zoom" />
+      </div>
+    </template>
+    <SampleUploadPanel v-else />
   </div>
 </template>

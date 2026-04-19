@@ -15,6 +15,14 @@ const viewportRef = ref<HTMLDivElement | null>(null);
 const draggingMarkerIndex = ref<number | null>(null);
 
 const totalDuration = computed(() => sampleFile.value?.durationSeconds ?? 0);
+const canvasWidth = computed(() => {
+  const viewport = viewportRef.value;
+  if (!viewport) {
+    return 320;
+  }
+
+  return Math.max(320, Math.floor(viewport.clientWidth * props.zoom));
+});
 
 function getCanvasMetrics(canvas: HTMLCanvasElement, viewport: HTMLDivElement) {
   const rect = canvas.getBoundingClientRect();
@@ -207,7 +215,7 @@ function onWheel(event: WheelEvent) {
   event.preventDefault();
 
   const previousZoom = props.zoom;
-  const nextZoom = Math.max(1, Math.min(8, previousZoom + (event.deltaY < 0 ? 1 : -1)));
+  const nextZoom = Math.max(1, Math.min(6, previousZoom + (event.deltaY < 0 ? 1 : -1)));
 
   if (nextZoom === previousZoom) {
     return;
@@ -262,7 +270,7 @@ watch(() => [props.waveformPeaks, props.zoom, sliceMarkers.value, selectedSliceI
 <template>
   <div class="waveform-shell">
     <div ref="viewportRef" class="waveform-viewport">
-      <canvas ref="canvasRef" class="waveform-canvas" />
+      <canvas ref="canvasRef" class="waveform-canvas" :style="{ width: `${canvasWidth}px` }" />
     </div>
     <div class="waveform-hint">
       Click to select a part. Use New Slice to place a flag. Drag a flag to move it. Use +/- or trackpad zoom.

@@ -4,7 +4,7 @@ import { useProjectStore } from '@/entities/project/project.store';
 
 export function useSpaceWaveformToggle() {
   const projectStore = useProjectStore();
-  const { activeEditorTab, hasLoadedSample, isPreviewPlaying } = storeToRefs(projectStore);
+  const { hasLoadedSample, isRecording } = storeToRefs(projectStore);
 
   function onKeydown(event: KeyboardEvent) {
     if (event.code !== 'Space') {
@@ -20,25 +20,37 @@ export function useSpaceWaveformToggle() {
       return;
     }
 
-    if (!hasLoadedSample.value || activeEditorTab.value !== 'waveform') {
+    if (!hasLoadedSample.value) {
       return;
     }
 
     event.preventDefault();
+    event.stopPropagation();
 
-    if (isPreviewPlaying.value) {
-      projectStore.stopSequence();
+    if (isRecording.value) {
+      void projectStore.stopRecording();
       return;
     }
 
-    void projectStore.previewSlice();
+    projectStore.stopSequence();
+  }
+
+  function onKeyup(event: KeyboardEvent) {
+    if (event.code !== 'Space' || !hasLoadedSample.value) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
   }
 
   onMounted(() => {
-    window.addEventListener('keydown', onKeydown);
+    window.addEventListener('keydown', onKeydown, true);
+    window.addEventListener('keyup', onKeyup, true);
   });
 
   onBeforeUnmount(() => {
-    window.removeEventListener('keydown', onKeydown);
+    window.removeEventListener('keydown', onKeydown, true);
+    window.removeEventListener('keyup', onKeyup, true);
   });
 }
