@@ -37,6 +37,7 @@ jobs:
   deploy:
     needs: verify
     runs-on: ubuntu-latest
+    if: ${{ secrets.VPS_HOST != '' && secrets.VPS_USER != '' && secrets.VPS_PASSWORD != '' && secrets.VPS_SUDO_PASSWORD != '' }}
 
     steps:
       - name: Deploy to VPS
