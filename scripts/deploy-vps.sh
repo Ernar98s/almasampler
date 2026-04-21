@@ -28,6 +28,6 @@ sudo_run systemctl restart almasampler-api
 sudo_run systemctl reload nginx
 
 curl -fsS http://127.0.0.1:3001/health >/dev/null
-curl -fsS http://127.0.0.1/health >/dev/null
+curl -fsS -H 'Host: almasampler.com' http://127.0.0.1/health >/dev/null
 
 echo "Deploy finished successfully"
