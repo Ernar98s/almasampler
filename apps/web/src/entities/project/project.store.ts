@@ -7,7 +7,7 @@ import { playMetronomeSample } from '@/shared/audio/metronome-sample';
 import { renderMonophonicPerformanceToWav } from '@/shared/audio/render-monophonic-performance';
 import { renderArrangementToWav } from '@/shared/audio/render-arrangement';
 import { buildWaveformPeaks } from '@/shared/audio/waveform-peaks';
-import { playBufferSlice, stopPlayback } from '@/shared/audio/sample-playback';
+import { playBufferSlice, stopPlayback as stopAudioPlayback } from '@/shared/audio/sample-playback';
 
 const MAX_DURATION_SECONDS = 6 * 60;
 const PAD_COUNT = 9;
@@ -155,11 +155,19 @@ export const useProjectStore = defineStore('project', () => {
   const isRecording = ref(false);
   const metronomeEnabled = ref(false);
   const isExporting = ref(false);
+  const activePadPlayback = ref<{
+    padId: string;
+    sliceId: string;
+    progress: number;
+    color?: string;
+  } | null>(null);
   let sequenceTimeouts: number[] = [];
   let sequenceCursorInterval: number | null = null;
   let recordingStartedAt = 0;
   let passiveMetronomeTimeout: number | null = null;
   let recordingMetronomeInterval: number | null = null;
+  let activePadPlaybackFrame: number | null = null;
+  let activePadPlaybackToken = 0;
   const recordedHits = ref<Array<{ padId: string; startMs: number; endMs: number | null }>>([]);
   const recordedHitCount = computed(() => recordedHits.value.length);
 
@@ -176,7 +184,7 @@ export const useProjectStore = defineStore('project', () => {
   const padMappedSlices = computed(() => slices.value.slice(getPadSliceOffset()));
 
   function getPadSliceOffset() {
-    return slices.value.length > pads.value.length ? LEAD_IN_SLICE_COUNT : 0;
+    return slices.value.length > LEAD_IN_SLICE_COUNT ? LEAD_IN_SLICE_COUNT : 0;
   }
 
   function getFirstMappedSliceId() {
@@ -341,6 +349,73 @@ export const useProjectStore = defineStore('project', () => {
     return (slice.endTime - slice.startTime) / Math.max(0.01, getSlicePlaybackRate(slice));
   }
 
+  function clearPadPlaybackProgress() {
+    if (activePadPlaybackFrame !== null) {
+      window.cancelAnimationFrame(activePadPlaybackFrame);
+      activePadPlaybackFrame = null;
+    }
+
+    activePadPlayback.value = null;
+  }
+
+  function startPadPlaybackProgress(
+    padId: string,
+    sliceId: string,
+    color: string | undefined,
+    durationSeconds: number
+  ) {
+    clearPadPlaybackProgress();
+
+    const token = ++activePadPlaybackToken;
+    const startedAt = performance.now();
+    const totalDurationMs = Math.max(10, durationSeconds * 1000);
+
+    const tick = () => {
+      if (token !== activePadPlaybackToken) {
+        return;
+      }
+
+      const progress = Math.min(1, (performance.now() - startedAt) / totalDurationMs);
+      activePadPlayback.value = {
+        padId,
+        sliceId,
+        progress,
+        color
+      };
+
+      if (progress < 1) {
+        activePadPlaybackFrame = window.requestAnimationFrame(tick);
+        return;
+      }
+
+      activePadPlaybackFrame = null;
+    };
+
+    activePadPlayback.value = {
+      padId,
+      sliceId,
+      progress: 0,
+      color
+    };
+    activePadPlaybackFrame = window.requestAnimationFrame(tick);
+
+    return token;
+  }
+
+  function finishPadPlayback(token?: number) {
+    if (token !== undefined && token !== activePadPlaybackToken) {
+      return;
+    }
+
+    clearPadPlaybackProgress();
+  }
+
+  async function stopPlayback() {
+    clearPadPlaybackProgress();
+    isPreviewPlaying.value = false;
+    await stopAudioPlayback();
+  }
+
   async function redetectSampleBpm() {
     if (!audioBuffer.value) {
       return;
@@ -386,6 +461,10 @@ export const useProjectStore = defineStore('project', () => {
       return;
     }
 
+    if (selectedSlice.value.id === getFirstMappedSliceId()) {
+      return;
+    }
+
     const markers = sliceMarkers.value.filter(
       (markerTime) => Math.abs(markerTime - selectedSlice.value!.startTime) > 0.001
     );
@@ -400,7 +479,15 @@ export const useProjectStore = defineStore('project', () => {
       return;
     }
 
-    slices.value = rebuildSlicesFromMarkers([], sampleFile.value.durationSeconds, pads.value);
+    const preservedLeadMarker = sliceMarkers.value[0];
+    const markersToKeep =
+      preservedLeadMarker !== undefined ? [preservedLeadMarker] : [];
+
+    slices.value = rebuildSlicesFromMarkers(
+      markersToKeep,
+      sampleFile.value.durationSeconds,
+      pads.value
+    );
     assignSlicesToPads();
     selectedSliceId.value = getFirstMappedSliceId();
     isAddingSlice.value = false;
@@ -497,6 +584,12 @@ export const useProjectStore = defineStore('project', () => {
 
     selectedSliceId.value = slice.id;
     isPreviewPlaying.value = true;
+    const playbackToken = startPadPlaybackProgress(
+      padId,
+      slice.id,
+      slice.color,
+      getSliceNaturalDurationSeconds(slice)
+    );
 
     if (isRecording.value) {
       const elapsedMs = Math.max(0, performance.now() - recordingStartedAt);
@@ -519,7 +612,10 @@ export const useProjectStore = defineStore('project', () => {
       endTime: slice.endTime,
       playbackRate: getSlicePlaybackRate(slice),
       onEnded: () => {
-        isPreviewPlaying.value = false;
+        if (playbackToken === activePadPlaybackToken) {
+          isPreviewPlaying.value = false;
+        }
+        finishPadPlayback(playbackToken);
       }
     });
   }
@@ -860,6 +956,7 @@ export const useProjectStore = defineStore('project', () => {
     isExporting,
     isAddingSlice,
     isPreviewPlaying,
+    activePadPlayback,
     recordedHitCount,
     isRecording,
     isSequencePlaying,
