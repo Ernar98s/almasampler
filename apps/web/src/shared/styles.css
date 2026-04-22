@@ -42,6 +42,13 @@ button {
   border: 0;
 }
 
+button,
+a,
+.upload-dropzone,
+.waveform-canvas {
+  -webkit-tap-highlight-color: transparent;
+}
+
 #app {
   min-height: 100vh;
 }
@@ -54,31 +61,123 @@ button {
 
 .app-frame {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 188px;
-  gap: 18px;
-  align-items: start;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 28px;
   width: 100%;
   margin: 0;
+  align-items: start;
 }
 
 .device-shell {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  max-width: 1060px;
+  min-width: 0;
+  width: 100%;
 }
 
-.app-logo {
+.app-sidebar {
+  position: sticky;
+  top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: calc(100vh - 48px);
+  padding: 18px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+}
+
+.app-sidebar__logo {
   display: flex;
   justify-content: flex-start;
 }
 
-.app-logo__image {
+.app-sidebar__logo-image {
   display: block;
-  width: min(240px, 24vw);
+  width: 100%;
   max-width: 100%;
   height: auto;
   object-fit: contain;
+}
+
+.app-sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.app-sidebar__item,
+.app-sidebar__support {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 44px;
+  padding: 0 14px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    transform 120ms ease;
+}
+
+.app-sidebar__item:hover,
+.app-sidebar__support:hover {
+  transform: translateY(-1px);
+}
+
+.app-sidebar__item--active {
+  background: rgba(240, 138, 75, 0.12);
+  border-color: rgba(240, 138, 75, 0.45);
+}
+
+.app-sidebar__item:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.app-sidebar__support {
+  margin-top: auto;
+}
+
+.app-sidebar__burger,
+.app-sidebar__scrim {
+  display: none;
+}
+
+.app-sidebar__burger {
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  z-index: 45;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  background: var(--tangerine);
+  border: 1px solid rgba(240, 138, 75, 0.7);
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.app-sidebar__burger span {
+  display: block;
+  width: 20px;
+  height: 2px;
+  background: #ffffff;
+}
+
+.app-sidebar__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  background: rgba(34, 49, 63, 0.22);
 }
 
 .transport-bar,
@@ -203,6 +302,7 @@ button {
     transform 120ms ease,
     border-color 120ms ease,
     background 120ms ease;
+  touch-action: manipulation;
 }
 
 .transport-secondary:hover,
@@ -333,8 +433,167 @@ button {
 .waveform-toolbar {
   display: flex;
   flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
   gap: 10px;
   margin-bottom: 10px;
+}
+
+.waveform-toolbar-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.waveform-toolbar-group--right {
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.waveform-toolbar-button {
+  position: relative;
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+  font-weight: 700;
+}
+
+.waveform-bpm-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+}
+
+.waveform-toolbar-stepper {
+  min-width: 42px;
+  min-height: 44px;
+  padding: 0;
+}
+
+.waveform-toolbar-bpm {
+  min-width: 104px;
+  min-height: 44px;
+  padding-inline: 12px;
+  border-left: 0;
+  border-right: 0;
+  font-weight: 700;
+  cursor: default;
+}
+
+.waveform-toolbar-chip {
+  min-height: 44px;
+  padding-inline: 14px;
+  font-weight: 700;
+}
+
+.waveform-toolbar-hint,
+.waveform-record-button {
+  position: relative;
+}
+
+.waveform-record-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  background: #ffffff;
+  border: 1px solid rgba(34, 49, 63, 0.12);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.waveform-record-button__dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: #111111;
+}
+
+.waveform-record-button__count {
+  font-size: 0.92rem;
+  font-weight: 800;
+  line-height: 1;
+  color: #111111;
+}
+
+.waveform-record-button--active {
+  border-color: rgba(210, 39, 48, 0.65);
+  box-shadow: inset 0 0 0 2px rgba(210, 39, 48, 0.18);
+}
+
+.waveform-record-button--active .waveform-record-button__dot {
+  background: #d22730;
+}
+
+.waveform-record-button--countdown {
+  border-color: rgba(242, 165, 65, 0.8);
+  box-shadow: inset 0 0 0 2px rgba(242, 165, 65, 0.18);
+}
+
+.toolbar-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+}
+
+.toolbar-icon--flag {
+  object-fit: contain;
+}
+
+.toolbar-icon--overlay {
+  margin-left: -4px;
+}
+
+.waveform-toolbar-button::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%) translateY(4px);
+  padding: 6px 8px;
+  background: #22313f;
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.waveform-toolbar-hint::after,
+.waveform-record-button::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%) translateY(4px);
+  padding: 6px 8px;
+  background: #22313f;
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.waveform-toolbar-button:hover::after,
+.waveform-toolbar-button:focus-visible::after,
+.waveform-toolbar-hint:hover::after,
+.waveform-toolbar-hint:focus-visible::after,
+.waveform-record-button:hover::after,
+.waveform-record-button:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 .waveform-stage {
@@ -377,6 +636,7 @@ button {
   color: var(--ink);
   border: 1px solid rgba(34, 49, 63, 0.12);
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .waveform-shell {
@@ -399,6 +659,7 @@ button {
   width: auto;
   min-height: 260px;
   cursor: crosshair;
+  touch-action: none;
 }
 
 .waveform-hint {
@@ -440,6 +701,7 @@ button {
     transform 120ms ease,
     border-color 120ms ease,
     background 120ms ease;
+  touch-action: manipulation;
 }
 
 .pad-button:hover {
@@ -551,6 +813,7 @@ button {
 
 .transport-side-link {
   text-decoration: none;
+  touch-action: manipulation;
 }
 
 .support-modal {
@@ -668,24 +931,37 @@ button {
     padding: 16px;
   }
 
-  .app-frame,
-  .transport-bar,
-  .device-content {
-    grid-template-columns: 1fr;
-    display: grid;
+  .app-frame {
+    display: block;
   }
 
-  .transport-bar {
-    gap: 14px;
+  .device-shell {
+    max-width: none;
+    padding-top: 56px;
   }
 
-  .device-content {
-    gap: 18px;
+  .app-sidebar__burger {
+    display: inline-flex;
   }
 
-  .transport-side-panel {
-    position: static;
-    min-height: auto;
+  .app-sidebar__scrim {
+    display: block;
+  }
+
+  .app-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 40;
+    width: min(280px, calc(100vw - 40px));
+    min-height: 100vh;
+    padding-top: 74px;
+    transform: translateX(-110%);
+    transition: transform 180ms ease;
+  }
+
+  .app-sidebar--open {
+    transform: translateX(0);
   }
 
   .pads-grid--row {
@@ -698,17 +974,44 @@ button {
     padding: 12px;
   }
 
-  .app-logo__image {
-    width: min(180px, 52vw);
+  .workspace-stack {
+    gap: 14px;
   }
 
-  .transport-controls--overview {
-    grid-template-columns: 1fr;
+  .waveform-toolbar {
+    gap: 8px;
+    margin-bottom: 8px;
   }
 
-  .sampler-actions {
-    flex-direction: column;
-    align-items: flex-start;
+  .waveform-toolbar-group {
+    width: 100%;
+  }
+
+  .waveform-toolbar-group--right {
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+
+  .action-button,
+  .ghost-action-button,
+  .transport-stepper__button,
+  .waveform-zoom-button,
+  .support-modal__close {
+    font-size: 16px;
+  }
+
+  .waveform-canvas {
+    min-height: 220px;
+  }
+
+  .waveform-zoom-controls--floating {
+    top: auto;
+    right: 10px;
+    bottom: 10px;
+  }
+
+  .waveform-hint {
+    font-size: 0.88rem;
   }
 
   .pads-grid--row {
@@ -717,5 +1020,14 @@ button {
 
   .pad-button {
     min-height: 68px;
+    padding: 10px 6px;
+  }
+
+  .pad-button strong {
+    font-size: 1.05rem;
+  }
+
+  .support-modal {
+    padding: 16px;
   }
 }

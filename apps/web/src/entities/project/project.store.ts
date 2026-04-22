@@ -153,6 +153,7 @@ export const useProjectStore = defineStore('project', () => {
   const isPreviewPlaying = ref(false);
   const isSequencePlaying = ref(false);
   const isRecording = ref(false);
+  const recordingCountdown = ref<number | null>(null);
   const metronomeEnabled = ref(false);
   const isExporting = ref(false);
   const activePadPlayback = ref<{
@@ -164,6 +165,7 @@ export const useProjectStore = defineStore('project', () => {
   let sequenceTimeouts: number[] = [];
   let sequenceCursorInterval: number | null = null;
   let recordingStartedAt = 0;
+  let recordingCountdownTimeout: number | null = null;
   let passiveMetronomeTimeout: number | null = null;
   let recordingMetronomeInterval: number | null = null;
   let activePadPlaybackFrame: number | null = null;
@@ -301,6 +303,15 @@ export const useProjectStore = defineStore('project', () => {
       window.clearTimeout(passiveMetronomeTimeout);
       passiveMetronomeTimeout = null;
     }
+  }
+
+  function clearRecordingCountdown() {
+    if (recordingCountdownTimeout !== null) {
+      window.clearTimeout(recordingCountdownTimeout);
+      recordingCountdownTimeout = null;
+    }
+
+    recordingCountdown.value = null;
   }
 
   function schedulePassiveMetronomeBeat(beatIndex: number) {
@@ -620,7 +631,7 @@ export const useProjectStore = defineStore('project', () => {
     });
   }
 
-  function startRecording() {
+  function beginRecording() {
     if (!audioBuffer.value) {
       return;
     }
@@ -648,7 +659,46 @@ export const useProjectStore = defineStore('project', () => {
     }
   }
 
+  function startRecording() {
+    if (!audioBuffer.value) {
+      return;
+    }
+
+    stopSequence();
+    stopPassiveMetronome();
+    clearRecordingCountdown();
+    errorMessage.value = '';
+
+    const startCountdownStep = (count: number) => {
+      recordingCountdown.value = count;
+
+      if (metronomeEnabled.value) {
+        void playMetronomeClick(count === 1);
+      }
+
+      if (count <= 1) {
+        recordingCountdownTimeout = window.setTimeout(() => {
+          clearRecordingCountdown();
+          beginRecording();
+        }, 1000);
+        return;
+      }
+
+      recordingCountdownTimeout = window.setTimeout(() => {
+        startCountdownStep(count - 1);
+      }, 1000);
+    };
+
+    startCountdownStep(3);
+  }
+
   async function stopRecording() {
+    if (!isRecording.value && recordingCountdown.value === null) {
+      return;
+    }
+
+    clearRecordingCountdown();
+
     if (!isRecording.value) {
       return;
     }
@@ -958,6 +1008,7 @@ export const useProjectStore = defineStore('project', () => {
     isPreviewPlaying,
     activePadPlayback,
     recordedHitCount,
+    recordingCountdown,
     isRecording,
     isSequencePlaying,
     loadAudioFile,
