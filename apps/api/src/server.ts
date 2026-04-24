@@ -9,9 +9,9 @@ import multipart from '@fastify/multipart';
 import { OAuth2Client } from 'google-auth-library';
 import type { Prisma, Project, User } from '@prisma/client';
 import type { RecordedPerformance } from '@almasampler/shared';
-import { config, assertRequiredConfig } from './config';
-import { prisma } from './prisma';
-import { assertReadableFile, deleteProjectStorageDir, saveProjectAudioFile } from './storage';
+import { config, assertRequiredConfig } from './config.js';
+import { prisma } from './prisma.js';
+import { assertReadableFile, deleteProjectStorageDir, saveProjectAudioFile } from './storage.js';
 
 type AuthUser = Pick<User, 'id' | 'email' | 'name' | 'avatarUrl'>;
 

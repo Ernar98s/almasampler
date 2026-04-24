@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { MultipartFile } from '@fastify/multipart';
-import { config } from './config';
+import { config } from './config.js';
 
 const AUDIO_EXTENSION_BY_MIME: Record<string, string> = {
   'audio/mpeg': '.mp3',
