@@ -19,6 +19,8 @@ const {
   selectedSlice,
   slices,
   isAddingSlice,
+  canUndoFlagChange,
+  canReplayLastRecording,
   projectBpm,
   metronomeEnabled,
   isRecording,
@@ -83,6 +85,25 @@ const bpmStepper = useHoldStepper((delta) => {
                 fill="none"
                 stroke="currentColor"
                 stroke-linecap="round"
+                stroke-width="1.9"
+              />
+            </svg>
+          </button>
+          <button
+            class="ghost-action-button waveform-toolbar-button"
+            :disabled="!canUndoFlagChange"
+            aria-label="Undo flag change"
+            title="Undo flag change"
+            data-tooltip="Undo flag change"
+            @click="projectStore.undoFlagChange()"
+          >
+            <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M10 7H5v5M6 8c1.9-2.3 4.7-3.5 7.9-3.1 3.7.4 6.6 3.3 7 7 .5 4.8-3.3 8.9-8 8.9-3.2 0-6-1.7-7.4-4.3"
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
                 stroke-width="1.9"
               />
             </svg>
@@ -172,6 +193,26 @@ const bpmStepper = useHoldStepper((delta) => {
               {{ recordingCountdown }}
             </span>
             <span v-else class="waveform-record-button__dot" />
+          </button>
+          <button
+            class="ghost-action-button waveform-toolbar-chip waveform-toolbar-hint"
+            :disabled="!canReplayLastRecording"
+            aria-label="Replay last recording"
+            title="Replay last recording"
+            data-tooltip="Replay last recording"
+            @click="projectStore.replayLastRecording()"
+          >
+            Last take
+          </button>
+          <button
+            class="ghost-action-button waveform-toolbar-chip waveform-toolbar-hint"
+            :disabled="!canReplayLastRecording"
+            aria-label="Export last recording"
+            title="Export last recording"
+            data-tooltip="Export last recording"
+            @click="projectStore.exportLastRecordingToWav()"
+          >
+            Export take
           </button>
         </div>
       </div>
