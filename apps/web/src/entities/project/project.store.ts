@@ -249,6 +249,9 @@ export const useProjectStore = defineStore('project', () => {
     () => Boolean(lastRecording.value?.hits.length && audioBuffer.value)
   );
   const canEditProject = computed(() => !isReadOnlySharedProject.value);
+  const hasPendingLocalSampleUpload = computed(
+    () => Boolean(sourceSampleFile.value && sampleFile.value && !isReadOnlySharedProject.value)
+  );
 
   function getPadSliceOffset() {
     return slices.value.length > LEAD_IN_SLICE_COUNT ? LEAD_IN_SLICE_COUNT : 0;
@@ -1512,6 +1515,7 @@ export const useProjectStore = defineStore('project', () => {
     activePadPlayback,
     beginMarkerDrag,
     canEditProject,
+    hasPendingLocalSampleUpload,
     canReplayLastRecording,
     canUndoFlagChange,
     lastRecording,
