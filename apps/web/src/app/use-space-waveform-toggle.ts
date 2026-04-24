@@ -45,12 +45,7 @@ export function useSpaceWaveformToggle() {
     event.preventDefault();
     event.stopPropagation();
 
-    if (isRecording.value) {
-      void projectStore.stopRecording();
-      return;
-    }
-
-    projectStore.stopSequence();
+    void projectStore.stopActivePlayback();
   }
 
   function onKeyup(event: KeyboardEvent) {

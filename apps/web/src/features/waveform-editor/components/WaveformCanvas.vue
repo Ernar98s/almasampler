@@ -9,27 +9,20 @@ const props = defineProps<{
 }>();
 
 const projectStore = useProjectStore();
-const { sampleFile, selectedSliceId, sliceMarkers, slices, pads, isAddingSlice, hoveredPadId, activePadPlayback } = storeToRefs(projectStore);
+const { sampleFile, selectedSliceId, sliceMarkers, slices, pads, isAddingSlice, hoveredPadId, activePadPlayback, canEditProject } = storeToRefs(projectStore);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const viewportRef = ref<HTMLDivElement | null>(null);
 const draggingMarkerSliceId = ref<string | null>(null);
 const hoveredMarkerIndex = ref<number | null>(null);
+let viewportResizeObserver: ResizeObserver | null = null;
 
 const totalDuration = computed(() => sampleFile.value?.durationSeconds ?? 0);
-const canvasWidth = computed(() => {
-  const viewport = viewportRef.value;
-  if (!viewport) {
-    return 320;
-  }
-
-  return Math.max(320, Math.floor(viewport.clientWidth * props.zoom));
-});
 
 function getCanvasMetrics(canvas: HTMLCanvasElement, viewport: HTMLDivElement) {
-  const rect = canvas.getBoundingClientRect();
   const viewportRect = viewport.getBoundingClientRect();
   const width = Math.max(320, Math.floor(viewport.clientWidth * props.zoom));
-  const height = Math.max(160, Math.floor(rect.height));
+  const height = window.innerWidth <= 768 ? 180 : 220;
+  const rect = canvas.getBoundingClientRect();
   return { rect, viewportRect, width, height, scrollLeft: viewport.scrollLeft };
 }
 
@@ -64,6 +57,8 @@ function drawWaveform() {
 
   canvas.width = width;
   canvas.height = height;
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
 
   const context = canvas.getContext('2d');
 
@@ -235,7 +230,7 @@ function onPointerDown(event: PointerEvent) {
 
   const markerIndex = findMarkerIndex(event.clientX, event.clientY);
 
-  if (markerIndex >= 0) {
+  if (canEditProject.value && markerIndex >= 0) {
     draggingMarkerSliceId.value = slices.value[markerIndex + 1]?.id ?? null;
     if (draggingMarkerSliceId.value) {
       projectStore.beginMarkerDrag(draggingMarkerSliceId.value);
@@ -253,7 +248,7 @@ function onPointerDown(event: PointerEvent) {
     projectStore.selectSlice(clickedSlice.id);
   }
 
-  if (isAddingSlice.value || event.shiftKey) {
+  if (canEditProject.value && (isAddingSlice.value || event.shiftKey)) {
     projectStore.addMarkerAtTime(time);
   }
 }
@@ -267,10 +262,10 @@ function onPointerMove(event: PointerEvent) {
   }
 
   const hoveredIndex = findMarkerIndex(event.clientX, event.clientY);
-  hoveredMarkerIndex.value = hoveredIndex >= 0 ? hoveredIndex : null;
+  hoveredMarkerIndex.value = canEditProject.value && hoveredIndex >= 0 ? hoveredIndex : null;
   canvas.style.cursor = draggingMarkerSliceId.value !== null
     ? 'grabbing'
-    : hoveredIndex >= 0
+    : canEditProject.value && hoveredIndex >= 0
       ? 'pointer'
       : 'crosshair';
 
@@ -340,6 +335,10 @@ onMounted(() => {
 
   canvas.addEventListener('pointerdown', onPointerDown);
   viewport.addEventListener('wheel', onWheel, { passive: false });
+  viewportResizeObserver = new ResizeObserver(() => {
+    drawWaveform();
+  });
+  viewportResizeObserver.observe(viewport);
   window.addEventListener('pointermove', onPointerMove);
   window.addEventListener('pointerup', stopDragging);
 });
@@ -355,6 +354,9 @@ onBeforeUnmount(() => {
   if (viewport) {
     viewport.removeEventListener('wheel', onWheel);
   }
+
+  viewportResizeObserver?.disconnect();
+  viewportResizeObserver = null;
 
   window.removeEventListener('pointermove', onPointerMove);
   window.removeEventListener('pointerup', stopDragging);
@@ -379,7 +381,7 @@ watch(
 <template>
   <div class="waveform-shell">
     <div ref="viewportRef" class="waveform-viewport">
-      <canvas ref="canvasRef" class="waveform-canvas" :style="{ width: `${canvasWidth}px` }" />
+      <canvas ref="canvasRef" class="waveform-canvas" />
     </div>
     <div class="waveform-hint">
       Click to select a part. Use New Slice to place a flag. Drag a flag to move it. Use +/- or trackpad zoom.

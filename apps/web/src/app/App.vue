@@ -26,8 +26,19 @@ const {
 } = storeToRefs(projectStore);
 let authSyncVersion = 0;
 
+function getSharedProjectIdFromLocation() {
+  const match = window.location.pathname.match(/^\/shared\/([^/]+)$/);
+  return match?.[1] ?? null;
+}
+
 async function syncProjectWithAuthState() {
   const syncVersion = ++authSyncVersion;
+  const sharedProjectId = getSharedProjectIdFromLocation();
+
+  if (sharedProjectId) {
+    await projectStore.loadSharedProject(sharedProjectId);
+    return;
+  }
 
   if (!isAuthenticated.value || !token.value || !user.value) {
     projectStore.resetLocalProject();

@@ -2,16 +2,20 @@
 import { ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import logoUrl from '@/assets/almasampler-logo.png';
+import googleLogoUrl from '@/assets/google-logo.png';
 import supportGifUrl from '@/assets/support-popup.gif';
 import { useAuthStore } from '@/entities/auth/auth.store';
 import { useProjectStore } from '@/entities/project/project.store';
+import { useToastStore } from '@/shared/ui/toast.store';
 
 const authStore = useAuthStore();
 const projectStore = useProjectStore();
+const toastStore = useToastStore();
 const { errorMessage, isAuthenticated, isLoading, user } = storeToRefs(authStore);
-const { projectName, hasLoadedSample } = storeToRefs(projectStore);
+const { projectName, hasLoadedSample, canEditProject, isReadOnlySharedProject } = storeToRefs(projectStore);
 const isMenuOpen = ref(false);
 const isSupportOpen = ref(false);
+const isDeleteConfirmOpen = ref(false);
 
 function toggleMenu() {
   isMenuOpen.value = !isMenuOpen.value;
@@ -32,6 +36,40 @@ async function login() {
 
 function logout() {
   authStore.logout();
+}
+
+async function shareProject() {
+  try {
+    const shareUrl = await projectStore.createShareLink();
+
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(shareUrl);
+      toastStore.show('Share link copied');
+      return;
+    }
+
+    window.prompt('Copy project link', shareUrl);
+  } catch (error) {
+    toastStore.show(error instanceof Error ? error.message : 'Failed to create share link.');
+  }
+}
+
+function openDeleteConfirm() {
+  isDeleteConfirmOpen.value = true;
+}
+
+function closeDeleteConfirm() {
+  isDeleteConfirmOpen.value = false;
+}
+
+async function confirmDeleteProject() {
+  try {
+    await projectStore.deleteProject();
+    toastStore.show('Project deleted');
+    isDeleteConfirmOpen.value = false;
+  } catch (error) {
+    toastStore.show(error instanceof Error ? error.message : 'Failed to delete project.');
+  }
 }
 </script>
 
@@ -59,7 +97,7 @@ function logout() {
       <img :src="logoUrl" alt="Almasampler" class="app-sidebar__logo-image" />
     </div>
 
-    <section class="app-sidebar__projects" aria-label="Projects">
+    <section v-if="isAuthenticated || isReadOnlySharedProject" class="app-sidebar__projects" aria-label="Projects">
       <div class="app-sidebar__projects-header">
         <h2>Projects</h2>
         <button
@@ -75,15 +113,62 @@ function logout() {
 
       <div class="app-sidebar__divider" />
 
-      <button class="app-sidebar__project-card app-sidebar__project-card--active" type="button">
+      <div class="app-sidebar__project-card app-sidebar__project-card--active">
         <span>{{ hasLoadedSample ? projectName : 'Untitled Project' }}</span>
-      </button>
+        <div v-if="isAuthenticated && canEditProject" class="app-sidebar__project-actions">
+          <button
+            class="app-sidebar__project-action app-sidebar__project-action--share"
+            type="button"
+            :disabled="!hasLoadedSample"
+            title="Share project"
+            aria-label="Share project"
+            @click="shareProject"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M10.6 13.4a4 4 0 0 1 0-5.7l2-2a4 4 0 0 1 5.7 5.7l-1.3 1.3M13.4 10.6a4 4 0 0 1 0 5.7l-2 2a4 4 0 1 1-5.7-5.7l1.3-1.3"
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.9"
+              />
+            </svg>
+          </button>
+          <button
+            class="app-sidebar__project-action app-sidebar__project-action--delete"
+            type="button"
+            title="Delete project"
+            aria-label="Delete project"
+            @click="openDeleteConfirm"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M9 4h6M5 7h14M8 7v11m4-11v11m4-11v11M7 7l.8 12h8.4L17 7"
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.9"
+              />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <p v-if="isReadOnlySharedProject" class="app-sidebar__shared-state">
+        Shared view. Pads and last take are playable, editing is locked.
+      </p>
     </section>
 
     <footer class="app-sidebar__footer">
       <button class="app-sidebar__support" type="button" @click="openSupport">
         Contact / Support
       </button>
+
+      <p v-if="!isAuthenticated && !isReadOnlySharedProject" class="app-sidebar__guest-hint">
+        If you want to save and share your project, sign in with your Google email.
+      </p>
 
       <div class="app-sidebar__auth">
         <template v-if="isAuthenticated">
@@ -114,9 +199,12 @@ function logout() {
           class="app-sidebar__login"
           type="button"
           :disabled="isLoading"
+          :title="isLoading ? 'Connecting Google account' : 'Sign in with Google'"
+          :aria-label="isLoading ? 'Connecting Google account' : 'Sign in with Google'"
           @click="login"
         >
-          {{ isLoading ? 'Connecting...' : 'Google acc' }}
+          <span v-if="isLoading">Connecting...</span>
+          <img v-else :src="googleLogoUrl" alt="" class="app-sidebar__login-logo" />
         </button>
       </div>
 
@@ -125,6 +213,36 @@ function logout() {
       </p>
     </footer>
   </aside>
+
+  <div
+    v-if="isDeleteConfirmOpen"
+    class="support-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="delete-project-title"
+    @click.self="closeDeleteConfirm"
+  >
+    <div class="support-modal__card">
+      <button class="support-modal__close" type="button" @click="closeDeleteConfirm">
+        Close
+      </button>
+
+      <div class="support-modal__copy">
+        <h3 id="delete-project-title">Delete project?</h3>
+        <p>
+          This will remove the current project, sample file, saved slices and last take from your account.
+        </p>
+        <div class="support-modal__actions">
+          <button class="ghost-action-button" type="button" @click="closeDeleteConfirm">
+            Cancel
+          </button>
+          <button class="app-sidebar__danger-button" type="button" @click="confirmDeleteProject">
+            Delete project
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div
     v-if="isSupportOpen"

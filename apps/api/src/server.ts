@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import Fastify from 'fastify';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
@@ -10,7 +11,7 @@ import type { Prisma, Project, User } from '@prisma/client';
 import type { RecordedPerformance } from '@almasampler/shared';
 import { config, assertRequiredConfig } from './config';
 import { prisma } from './prisma';
-import { assertReadableFile, saveProjectAudioFile } from './storage';
+import { assertReadableFile, deleteProjectStorageDir, saveProjectAudioFile } from './storage';
 
 type AuthUser = Pick<User, 'id' | 'email' | 'name' | 'avatarUrl'>;
 
@@ -49,7 +50,7 @@ app.register(jwt, {
 app.register(cors, {
   origin: config.corsOrigin,
   credentials: true,
-  methods: ['GET', 'HEAD', 'POST', 'PUT', 'OPTIONS']
+  methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 });
 app.register(multipart, {
   limits: {
@@ -70,6 +71,7 @@ function publicUser(user: User): AuthUser {
 function serializeProject(project: Project) {
   return {
     id: project.id,
+    shareId: project.shareId,
     name: project.name,
     bpm: project.bpm,
     samplePath: project.samplePath,
@@ -87,6 +89,14 @@ function serializeProject(project: Project) {
   };
 }
 
+async function getSharedProjectByShareId(shareId: string) {
+  return prisma.project.findUnique({
+    where: {
+      shareId
+    }
+  });
+}
+
 function projectNameFromFileName(fileName: string | undefined) {
   const trimmedName = fileName?.trim();
 
@@ -95,6 +105,17 @@ function projectNameFromFileName(fileName: string | undefined) {
   }
 
   return path.basename(trimmedName, path.extname(trimmedName)) || trimmedName;
+}
+
+function buildContentDisposition(fileName: string | undefined, disposition: 'inline' | 'attachment' = 'inline') {
+  const resolvedFileName = fileName?.trim() || 'sample';
+  const asciiFallback = resolvedFileName
+    .normalize('NFKD')
+    .replace(/[^\x20-\x7E]+/g, '_')
+    .replace(/"/g, '')
+    .replace(/[\\\/]/g, '_');
+
+  return `${disposition}; filename="${asciiFallback || 'sample'}"; filename*=UTF-8''${encodeURIComponent(resolvedFileName)}`;
 }
 
 function parseRecordingBody(body: RecordingRequestBody): RecordedPerformance | null {
@@ -261,6 +282,66 @@ app.get('/project', async (request, reply) => {
   return serializeProject(project);
 });
 
+app.post('/project/share', async (request, reply) => {
+  const user = await requireAuth(request, reply);
+
+  if (!user) {
+    return { message: 'Unauthorized' };
+  }
+
+  const project = await getOrCreateProject(user.id);
+
+  if (!project.samplePath) {
+    reply.code(400);
+    return { message: 'Load a sample before sharing a project' };
+  }
+
+  const updated = project.shareId
+    ? project
+    : await prisma.project.update({
+        where: {
+          id: project.id
+        },
+        data: {
+          shareId: randomUUID()
+        }
+      });
+
+  return {
+    shareId: updated.shareId,
+    sharePath: `/shared/${updated.shareId}`
+  };
+});
+
+app.delete('/project', async (request, reply) => {
+  const user = await requireAuth(request, reply);
+
+  if (!user) {
+    return { message: 'Unauthorized' };
+  }
+
+  const project = await prisma.project.findUnique({
+    where: {
+      userId: user.id
+    }
+  });
+
+  if (!project) {
+    reply.code(404);
+    return { message: 'Project not found' };
+  }
+
+  await prisma.project.delete({
+    where: {
+      id: project.id
+    }
+  });
+  await deleteProjectStorageDir(user.id, project.id);
+
+  reply.code(204);
+  return null;
+});
+
 app.put<{ Body: ProjectStateBody }>('/project/state', async (request, reply) => {
   const user = await requireAuth(request, reply);
 
@@ -342,7 +423,44 @@ app.get('/project/sample', async (request, reply) => {
   }
 
   reply.header('content-type', project.sampleMimeType || 'application/octet-stream');
-  reply.header('content-disposition', `inline; filename="${project.sampleOriginalName || path.basename(samplePath)}"`);
+  reply.header(
+    'content-disposition',
+    buildContentDisposition(project.sampleOriginalName || path.basename(samplePath))
+  );
+  return fs.createReadStream(samplePath);
+});
+
+app.get<{ Params: { shareId: string } }>('/shared/:shareId', async (request, reply) => {
+  const project = await getSharedProjectByShareId(request.params.shareId);
+
+  if (!project) {
+    reply.code(404);
+    return { message: 'Shared project not found' };
+  }
+
+  return serializeProject(project);
+});
+
+app.get<{ Params: { shareId: string } }>('/shared/:shareId/sample', async (request, reply) => {
+  const project = await getSharedProjectByShareId(request.params.shareId);
+
+  if (!project) {
+    reply.code(404);
+    return { message: 'Shared project not found' };
+  }
+
+  const samplePath = await assertReadableFile(project.samplePath);
+
+  if (!samplePath) {
+    reply.code(404);
+    return { message: 'Sample not found' };
+  }
+
+  reply.header('content-type', project.sampleMimeType || 'application/octet-stream');
+  reply.header(
+    'content-disposition',
+    buildContentDisposition(project.sampleOriginalName || path.basename(samplePath))
+  );
   return fs.createReadStream(samplePath);
 });
 

@@ -147,6 +147,8 @@ a,
 .app-sidebar__project-card {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   width: 100%;
   min-height: 42px;
   padding: 0 12px;
@@ -159,6 +161,8 @@ a,
 }
 
 .app-sidebar__project-card span {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -167,6 +171,54 @@ a,
 .app-sidebar__project-card--active {
   border-color: rgba(240, 138, 75, 0.55);
   background: rgba(240, 138, 75, 0.08);
+}
+
+.app-sidebar__project-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.app-sidebar__project-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(34, 49, 63, 0.14);
+  background: #ffffff;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.app-sidebar__project-action svg {
+  width: 16px;
+  height: 16px;
+}
+
+.app-sidebar__project-action--share {
+  color: var(--tangerine);
+  border-color: rgba(240, 138, 75, 0.38);
+}
+
+.app-sidebar__project-action--delete {
+  color: #c43b2f;
+  border-color: rgba(196, 59, 47, 0.28);
+}
+
+.app-sidebar__project-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.app-sidebar__shared-state {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  font-weight: 700;
 }
 
 .app-sidebar__item,
@@ -211,6 +263,14 @@ a,
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.app-sidebar__guest-hint {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  font-weight: 700;
 }
 
 .app-sidebar__support {
@@ -263,6 +323,15 @@ a,
 
 .app-sidebar__login {
   width: 100%;
+  justify-content: center;
+  gap: 10px;
+}
+
+.app-sidebar__login-logo {
+  display: block;
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
 }
 
 .app-sidebar__logout {
@@ -825,6 +894,55 @@ a,
   position: relative;
 }
 
+.waveform-recording-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.waveform-recording-overlay__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: rgba(240, 138, 75, 0.58);
+  text-align: center;
+  animation: waveform-recording-overlay-blink 980ms ease-in-out infinite;
+}
+
+.waveform-recording-overlay__count {
+  font-size: clamp(3.8rem, 11vw, 7rem);
+  font-weight: 800;
+  line-height: 0.9;
+  letter-spacing: -0.08em;
+}
+
+.waveform-recording-overlay__count--live {
+  font-size: clamp(2.2rem, 7vw, 3.6rem);
+  letter-spacing: -0.04em;
+}
+
+.waveform-recording-overlay__hint {
+  font-size: clamp(0.92rem, 2vw, 1.18rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+@keyframes waveform-recording-overlay-blink {
+  0%,
+  100% {
+    opacity: 0.28;
+  }
+
+  50% {
+    opacity: 0.68;
+  }
+}
+
 .waveform-zoom-controls {
   display: inline-flex;
   align-items: center;
@@ -873,18 +991,32 @@ a,
 .waveform-viewport {
   overflow-x: auto;
   overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
   border-radius: 0;
   border: 1px solid rgba(87, 117, 144, 0.24);
   border-top-color: #ffffff;
   background: linear-gradient(180deg, #5c7a96 0%, #577590 100%);
 }
 
+.waveform-viewport::-webkit-scrollbar {
+  height: 14px;
+}
+
+.waveform-viewport::-webkit-scrollbar-track {
+  background: rgba(15, 23, 32, 0.82);
+}
+
+.waveform-viewport::-webkit-scrollbar-thumb {
+  background: rgba(240, 138, 75, 0.82);
+  border: 3px solid rgba(15, 23, 32, 0.82);
+}
+
 .waveform-canvas {
   display: block;
   width: auto;
-  min-height: 260px;
+  min-width: 100%;
   cursor: crosshair;
-  touch-action: none;
+  touch-action: pan-x;
 }
 
 .waveform-hint {
@@ -893,6 +1025,9 @@ a,
 }
 
 .pad-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   overflow: visible;
   background: transparent;
   border: 0;
@@ -966,6 +1101,34 @@ a,
 
 .pad-button:active {
   cursor: grabbing;
+}
+
+.pads-stop-button {
+  width: 100%;
+  min-height: 46px;
+  gap: 10px;
+  padding-inline: 18px;
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.pads-stop-button:hover {
+  background: var(--tangerine);
+  color: #ffffff;
+}
+
+.pads-stop-button__icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.pads-stop-button__icon span {
+  display: block;
+  width: 3px;
+  height: 14px;
+  background: currentColor;
 }
 
 .transport-side-panel {
@@ -1102,6 +1265,27 @@ a,
   text-decoration: none;
 }
 
+.support-modal__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.app-sidebar__danger-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid rgba(196, 59, 47, 0.42);
+  background: rgba(196, 59, 47, 0.12);
+  color: #c43b2f;
+  font-weight: 800;
+  cursor: pointer;
+}
+
 .device-status,
 .error-banner {
   margin: 0;
@@ -1223,10 +1407,6 @@ a,
   .waveform-zoom-button,
   .support-modal__close {
     font-size: 16px;
-  }
-
-  .waveform-canvas {
-    min-height: 220px;
   }
 
   .waveform-zoom-controls--floating {

@@ -21,6 +21,8 @@ const {
   isAddingSlice,
   canUndoFlagChange,
   canReplayLastRecording,
+  canEditProject,
+  isReadOnlySharedProject,
   projectBpm,
   metronomeEnabled,
   isRecording,
@@ -31,6 +33,23 @@ const {
 const bpmStepper = useHoldStepper((delta) => {
   projectStore.updateProjectBpm(projectBpm.value + delta);
 });
+
+function handleRecordButtonClick(event: MouseEvent) {
+  const target = event.currentTarget;
+
+  if (target instanceof HTMLButtonElement) {
+    window.requestAnimationFrame(() => {
+      target.blur();
+    });
+  }
+
+  if (isRecording.value) {
+    void projectStore.stopRecording();
+    return;
+  }
+
+  projectStore.startRecording();
+}
 </script>
 
 <template>
@@ -45,6 +64,7 @@ const bpmStepper = useHoldStepper((delta) => {
           <button
             class="action-button waveform-toolbar-button"
             :class="{ 'toolbar-toggle-active': isAddingSlice }"
+            :disabled="!canEditProject"
             :aria-label="isAddingSlice ? 'Place new slice flag' : 'New slice flag'"
             :title="isAddingSlice ? 'Place new slice flag' : 'New slice flag'"
             :data-tooltip="isAddingSlice ? 'Place new slice flag' : 'New slice flag'"
@@ -63,6 +83,7 @@ const bpmStepper = useHoldStepper((delta) => {
           </button>
           <button
             class="action-button waveform-toolbar-button"
+            :disabled="!canEditProject"
             aria-label="Auto flags"
             title="Auto flags"
             data-tooltip="Auto flags"
@@ -72,7 +93,7 @@ const bpmStepper = useHoldStepper((delta) => {
           </button>
           <button
             class="ghost-action-button waveform-toolbar-button"
-            :disabled="!selectedSlice || selectedSlice.startTime === 0"
+            :disabled="!canEditProject || !selectedSlice || selectedSlice.startTime === 0"
             aria-label="Delete selected flag"
             title="Delete selected flag"
             data-tooltip="Delete selected flag"
@@ -91,7 +112,7 @@ const bpmStepper = useHoldStepper((delta) => {
           </button>
           <button
             class="ghost-action-button waveform-toolbar-button"
-            :disabled="!canUndoFlagChange"
+            :disabled="!canEditProject || !canUndoFlagChange"
             aria-label="Undo flag change"
             title="Undo flag change"
             data-tooltip="Undo flag change"
@@ -110,7 +131,7 @@ const bpmStepper = useHoldStepper((delta) => {
           </button>
           <button
             class="ghost-action-button waveform-toolbar-button"
-            :disabled="slices.length <= 1"
+            :disabled="!canEditProject || slices.length <= 1"
             aria-label="Delete all flags"
             title="Delete all flags"
             data-tooltip="Delete all flags"
@@ -132,7 +153,7 @@ const bpmStepper = useHoldStepper((delta) => {
           <div class="waveform-bpm-control">
             <button
               class="transport-stepper__button waveform-toolbar-stepper"
-              :disabled="!hasLoadedSample"
+              :disabled="!hasLoadedSample || !canEditProject"
               aria-label="Decrease BPM"
               title="Decrease BPM"
               data-tooltip="Decrease BPM"
@@ -145,7 +166,7 @@ const bpmStepper = useHoldStepper((delta) => {
             </button>
             <button
               class="ghost-action-button waveform-toolbar-bpm waveform-toolbar-hint"
-              :disabled="!hasLoadedSample"
+              :disabled="!hasLoadedSample || !canEditProject"
               aria-label="Current BPM"
               title="Current BPM"
               data-tooltip="Current BPM"
@@ -154,7 +175,7 @@ const bpmStepper = useHoldStepper((delta) => {
             </button>
             <button
               class="transport-stepper__button waveform-toolbar-stepper"
-              :disabled="!hasLoadedSample"
+              :disabled="!hasLoadedSample || !canEditProject"
               aria-label="Increase BPM"
               title="Increase BPM"
               data-tooltip="Increase BPM"
@@ -169,7 +190,7 @@ const bpmStepper = useHoldStepper((delta) => {
           <button
             class="ghost-action-button waveform-toolbar-chip waveform-toolbar-hint"
             :class="{ 'toolbar-toggle-active': metronomeEnabled }"
-            :disabled="!hasLoadedSample"
+            :disabled="!hasLoadedSample || !canEditProject"
             aria-label="Toggle metronome"
             title="Toggle metronome"
             data-tooltip="Toggle metronome"
@@ -178,16 +199,17 @@ const bpmStepper = useHoldStepper((delta) => {
             Metro
           </button>
           <button
+            v-if="!isReadOnlySharedProject"
             class="waveform-record-button"
             :class="{
               'waveform-record-button--active': isRecording,
               'waveform-record-button--countdown': recordingCountdown !== null
             }"
-            :disabled="!hasLoadedSample || isExporting"
+            :disabled="!hasLoadedSample || isExporting || !canEditProject"
             :aria-label="isRecording ? 'Stop recording' : recordingCountdown !== null ? 'Recording starts after count-in' : 'Start recording'"
             :title="isRecording ? 'Stop recording' : recordingCountdown !== null ? 'Recording starts after count-in' : 'Start recording'"
             :data-tooltip="isRecording ? 'Stop recording' : recordingCountdown !== null ? 'Recording starts after count-in' : 'Start recording'"
-            @click="isRecording ? projectStore.stopRecording() : projectStore.startRecording()"
+            @click="handleRecordButtonClick"
           >
             <span v-if="recordingCountdown !== null" class="waveform-record-button__count">
               {{ recordingCountdown }}
@@ -218,6 +240,17 @@ const bpmStepper = useHoldStepper((delta) => {
       </div>
 
       <div class="waveform-stage">
+        <div v-if="recordingCountdown !== null || isRecording" class="waveform-recording-overlay">
+          <div class="waveform-recording-overlay__content">
+            <div v-if="recordingCountdown !== null" class="waveform-recording-overlay__count">
+              {{ recordingCountdown }}..
+            </div>
+            <div v-else class="waveform-recording-overlay__count waveform-recording-overlay__count--live">
+              REC
+            </div>
+            <div class="waveform-recording-overlay__hint">Press Space to stop</div>
+          </div>
+        </div>
         <div class="waveform-zoom-controls waveform-zoom-controls--floating">
           <button class="waveform-zoom-button" :disabled="zoom <= 1" @click="projectStore.setZoom(zoom - 1)">
             -

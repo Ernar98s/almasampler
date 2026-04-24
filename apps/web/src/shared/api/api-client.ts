@@ -12,6 +12,7 @@ export type AuthUser = {
 
 export type RemoteProject = {
   id: string;
+  shareId?: string | null;
   name: string;
   bpm: number;
   samplePath?: string | null;
@@ -73,6 +74,10 @@ async function request<T>(path: string, options: RequestInit = {}) {
     throw new Error(message);
   }
 
+  if (response.status === 204) {
+    return null as T;
+  }
+
   return response.json() as Promise<T>;
 }
 
@@ -90,6 +95,22 @@ export const apiClient = {
 
   async getProject() {
     return request<RemoteProject>('/project');
+  },
+
+  async createShareLink() {
+    return request<{ shareId: string; sharePath: string }>('/project/share', {
+      method: 'POST'
+    });
+  },
+
+  async deleteProject() {
+    await request<null>('/project', {
+      method: 'DELETE'
+    });
+  },
+
+  async getSharedProject(shareId: string) {
+    return request<RemoteProject>(`/shared/${shareId}`);
   },
 
   async saveProjectState(payload: ProjectStatePayload) {
@@ -115,6 +136,16 @@ export const apiClient = {
     const response = await fetch(`${API_BASE_URL}/project/sample`, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined
     });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return response.blob();
+  },
+
+  async downloadSharedSample(shareId: string) {
+    const response = await fetch(`${API_BASE_URL}/shared/${shareId}/sample`);
 
     if (!response.ok) {
       return null;

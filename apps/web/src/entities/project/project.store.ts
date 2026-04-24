@@ -226,6 +226,9 @@ export const useProjectStore = defineStore('project', () => {
     selectedSliceId: string | null;
   }>>([]);
   const isRestoringRemoteProject = ref(false);
+  const isReadOnlySharedProject = ref(false);
+  const sharedProjectId = ref<string | null>(null);
+  const shareId = ref<string | null>(null);
   const recordedHits = ref<Array<{ padId: string; startMs: number; endMs: number | null }>>([]);
   const lastRecording = ref<RecordedPerformance | null>(null);
   const recordedHitCount = computed(() => recordedHits.value.length);
@@ -245,6 +248,7 @@ export const useProjectStore = defineStore('project', () => {
   const canReplayLastRecording = computed(
     () => Boolean(lastRecording.value?.hits.length && audioBuffer.value)
   );
+  const canEditProject = computed(() => !isReadOnlySharedProject.value);
 
   function getPadSliceOffset() {
     return slices.value.length > LEAD_IN_SLICE_COUNT ? LEAD_IN_SLICE_COUNT : 0;
@@ -301,10 +305,13 @@ export const useProjectStore = defineStore('project', () => {
     activePadPlayback.value = null;
     recordedHits.value = [];
     lastRecording.value = null;
+    isReadOnlySharedProject.value = false;
+    sharedProjectId.value = null;
+    shareId.value = null;
   }
 
   function hasBackendSession() {
-    return Boolean(getStoredAuthToken());
+    return Boolean(getStoredAuthToken()) && !isReadOnlySharedProject.value;
   }
 
   function cloneSlices(nextSlices: Slice[]) {
@@ -410,6 +417,7 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   function applyRemoteProjectState(project: RemoteProject) {
+    shareId.value = project.shareId ?? null;
     projectName.value =
       project.name && project.name !== 'Untitled Project'
         ? project.name
@@ -430,6 +438,24 @@ export const useProjectStore = defineStore('project', () => {
     }
   }
 
+  async function restoreProjectSample(project: RemoteProject, blob: Blob) {
+    const restoredFile = new File(
+      [blob],
+      project.sampleOriginalName || 'restored-sample',
+      { type: project.sampleMimeType || blob.type || 'audio/mpeg' }
+    );
+    const decoded = await decodeAudioFile(restoredFile);
+
+    sourceSampleFile.value = restoredFile;
+    projectName.value = project.name || projectNameFromFileName(restoredFile.name);
+    sampleFile.value = decoded.metadata;
+    audioBuffer.value = decoded.audioBuffer;
+    waveformPeaks.value = buildWaveformPeaks(decoded.audioBuffer, 768);
+    detectedSampleBpm.value = detectApproximateBpm(decoded.audioBuffer);
+    applyRemoteProjectState(project);
+    syncPadsToExistingSliceAssignments();
+  }
+
   async function loadRemoteProject() {
     if (!hasBackendSession()) {
       return;
@@ -448,21 +474,7 @@ export const useProjectStore = defineStore('project', () => {
         const blob = await apiClient.downloadSample();
 
         if (blob) {
-          const restoredFile = new File(
-            [blob],
-            project.sampleOriginalName || 'restored-sample',
-            { type: project.sampleMimeType || blob.type || 'audio/mpeg' }
-          );
-          const decoded = await decodeAudioFile(restoredFile);
-
-          sourceSampleFile.value = restoredFile;
-          projectName.value = project.name || projectNameFromFileName(restoredFile.name);
-          sampleFile.value = decoded.metadata;
-          audioBuffer.value = decoded.audioBuffer;
-          waveformPeaks.value = buildWaveformPeaks(decoded.audioBuffer, 768);
-          detectedSampleBpm.value = detectApproximateBpm(decoded.audioBuffer);
-          applyRemoteProjectState(project);
-          syncPadsToExistingSliceAssignments();
+          await restoreProjectSample(project, blob);
         }
       }
     } catch (error) {
@@ -479,6 +491,53 @@ export const useProjectStore = defineStore('project', () => {
     }
 
     await loadRemoteProject();
+  }
+
+  async function loadSharedProject(nextSharedProjectId: string) {
+    errorMessage.value = '';
+    isRestoringRemoteProject.value = true;
+
+    try {
+      resetLocalProject();
+      isRestoringRemoteProject.value = true;
+      isReadOnlySharedProject.value = true;
+      sharedProjectId.value = nextSharedProjectId;
+      const project = await apiClient.getSharedProject(nextSharedProjectId);
+      applyRemoteProjectState(project);
+
+      if (project.samplePath) {
+        const blob = await apiClient.downloadSharedSample(nextSharedProjectId);
+
+        if (blob) {
+          await restoreProjectSample(project, blob);
+        }
+      }
+    } catch (error) {
+      errorMessage.value =
+        error instanceof Error ? error.message : 'Failed to load shared project.';
+      toastStore.show(errorMessage.value);
+    } finally {
+      isRestoringRemoteProject.value = false;
+    }
+  }
+
+  async function createShareLink() {
+    if (!hasBackendSession()) {
+      throw new Error('Sign in before sharing a project.');
+    }
+
+    const response = await apiClient.createShareLink();
+    shareId.value = response.shareId;
+    return `${window.location.origin}${response.sharePath}`;
+  }
+
+  async function deleteProject() {
+    if (!hasBackendSession()) {
+      throw new Error('Sign in before deleting a project.');
+    }
+
+    await apiClient.deleteProject();
+    resetLocalProject();
   }
 
   async function saveLocalProjectToBackend() {
@@ -798,6 +857,16 @@ export const useProjectStore = defineStore('project', () => {
     clearPadPlaybackProgress();
     isPreviewPlaying.value = false;
     await stopAudioPlayback();
+  }
+
+  async function stopActivePlayback() {
+    if (isRecording.value || recordingCountdown.value !== null) {
+      await stopRecording();
+      return;
+    }
+
+    stopSequence();
+    await stopPlayback();
   }
 
   async function replayLastRecording() {
@@ -1439,8 +1508,10 @@ export const useProjectStore = defineStore('project', () => {
     isAddingSlice,
     isPreviewPlaying,
     isRestoringRemoteProject,
+    isReadOnlySharedProject,
     activePadPlayback,
     beginMarkerDrag,
+    canEditProject,
     canReplayLastRecording,
     canUndoFlagChange,
     lastRecording,
@@ -1448,8 +1519,11 @@ export const useProjectStore = defineStore('project', () => {
     recordingCountdown,
     isRecording,
     isSequencePlaying,
+    createShareLink,
+    deleteProject,
     loadAudioFile,
     loadRemoteProject,
+    loadSharedProject,
     moveMarker,
     movePianoRollNote,
     pads,
@@ -1460,6 +1534,7 @@ export const useProjectStore = defineStore('project', () => {
     previewSlice,
     projectName,
     projectBpm,
+    shareId,
     replayLastRecording,
     redetectSampleBpm,
     resizePianoRollNote,
@@ -1478,9 +1553,11 @@ export const useProjectStore = defineStore('project', () => {
     sliceMarkers,
     slices,
     smartSlice,
+    sharedProjectId,
     syncAuthenticatedProject,
     endMarkerDrag,
     startRecording,
+    stopActivePlayback,
     stopPlayback,
     stopRecording,
     stopSequence,

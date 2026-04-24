@@ -3,7 +3,7 @@ import { storeToRefs } from 'pinia';
 import { useProjectStore } from '@/entities/project/project.store';
 
 const projectStore = useProjectStore();
-const { isDecoding } = storeToRefs(projectStore);
+const { isDecoding, isReadOnlySharedProject } = storeToRefs(projectStore);
 
 async function onFileChange(event: Event) {
   const input = event.target as HTMLInputElement;
@@ -19,7 +19,11 @@ async function onFileChange(event: Event) {
 </script>
 
 <template>
-  <label class="upload-dropzone upload-dropzone--waveform">
+  <div v-if="isReadOnlySharedProject" class="upload-dropzone upload-dropzone--waveform upload-dropzone--readonly">
+    <span>Shared Project</span>
+    <small>This public link is read-only. Sample editing and uploads are disabled.</small>
+  </div>
+  <label v-else class="upload-dropzone upload-dropzone--waveform">
     <input
       accept=".wav,.mp3,.ogg,.m4a,audio/*"
       class="sr-only"

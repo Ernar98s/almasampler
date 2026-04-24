@@ -21,6 +21,7 @@ model User {
 model Project {
   id                    String   @id @default(uuid())
   userId                String   @unique
+  shareId               String?  @unique
   user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name                  String   @default("Untitled Project")
   bpm                   Int      @default(120)

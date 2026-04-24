@@ -66,3 +66,8 @@ export async function assertReadableFile(filePath: string | null | undefined) {
   await fs.promises.access(resolvedPath, fs.constants.R_OK);
   return resolvedPath;
 }
+
+export async function deleteProjectStorageDir(userId: string, projectId: string) {
+  const dir = getProjectStorageDir(userId, projectId);
+  await fs.promises.rm(dir, { recursive: true, force: true });
+}

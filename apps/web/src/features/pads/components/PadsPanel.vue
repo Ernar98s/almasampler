@@ -4,7 +4,8 @@ import { storeToRefs } from 'pinia';
 import { PAD_KEY_CODES, useProjectStore } from '@/entities/project/project.store';
 
 const projectStore = useProjectStore();
-const { pads, selectedSliceId, slices, hasLoadedSample, hoveredPadId } = storeToRefs(projectStore);
+const { pads, selectedSliceId, slices, hasLoadedSample, hoveredPadId, isRecording, recordingCountdown, isPreviewPlaying, isSequencePlaying } =
+  storeToRefs(projectStore);
 
 const padView = computed(() =>
   pads.value.slice(0, 9).map((pad, index) => ({
@@ -76,5 +77,16 @@ onBeforeUnmount(() => {
         <strong>{{ `Pad ${pad.index + 1}` }}</strong>
       </button>
     </div>
+    <button
+      class="action-button pads-stop-button"
+      :disabled="!hasLoadedSample && !isRecording && recordingCountdown === null && !isPreviewPlaying && !isSequencePlaying"
+      @click="projectStore.stopActivePlayback()"
+    >
+      <span class="pads-stop-button__icon" aria-hidden="true">
+        <span />
+        <span />
+      </span>
+      <span>Stop / Space</span>
+    </button>
   </div>
 </template>
