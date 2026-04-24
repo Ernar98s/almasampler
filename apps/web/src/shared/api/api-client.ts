@@ -110,7 +110,7 @@ export const apiClient = {
   },
 
   async getSharedProject(shareId: string) {
-    return request<RemoteProject>(`/shared/${shareId}`);
+    return request<RemoteProject>(`/public/shared/${shareId}`);
   },
 
   async saveProjectState(payload: ProjectStatePayload) {
@@ -145,7 +145,7 @@ export const apiClient = {
   },
 
   async downloadSharedSample(shareId: string) {
-    const response = await fetch(`${API_BASE_URL}/shared/${shareId}/sample`);
+    const response = await fetch(`${API_BASE_URL}/public/shared/${shareId}/sample`);
 
     if (!response.ok) {
       return null;

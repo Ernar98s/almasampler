@@ -430,7 +430,7 @@ app.get('/project/sample', async (request, reply) => {
   return fs.createReadStream(samplePath);
 });
 
-app.get<{ Params: { shareId: string } }>('/shared/:shareId', async (request, reply) => {
+app.get<{ Params: { shareId: string } }>('/public/shared/:shareId', async (request, reply) => {
   const project = await getSharedProjectByShareId(request.params.shareId);
 
   if (!project) {
@@ -441,7 +441,7 @@ app.get<{ Params: { shareId: string } }>('/shared/:shareId', async (request, rep
   return serializeProject(project);
 });
 
-app.get<{ Params: { shareId: string } }>('/shared/:shareId/sample', async (request, reply) => {
+app.get<{ Params: { shareId: string } }>('/public/shared/:shareId/sample', async (request, reply) => {
   const project = await getSharedProjectByShareId(request.params.shareId);
 
   if (!project) {
