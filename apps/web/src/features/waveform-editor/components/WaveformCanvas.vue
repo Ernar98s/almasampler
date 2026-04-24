@@ -9,10 +9,10 @@ const props = defineProps<{
 }>();
 
 const projectStore = useProjectStore();
-const { sampleFile, selectedSliceId, sliceMarkers, slices, isAddingSlice, hoveredPadId, activePadPlayback } = storeToRefs(projectStore);
+const { sampleFile, selectedSliceId, sliceMarkers, slices, pads, isAddingSlice, hoveredPadId, activePadPlayback } = storeToRefs(projectStore);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const viewportRef = ref<HTMLDivElement | null>(null);
-const draggingMarkerIndex = ref<number | null>(null);
+const draggingMarkerSliceId = ref<string | null>(null);
 const hoveredMarkerIndex = ref<number | null>(null);
 
 const totalDuration = computed(() => sampleFile.value?.durationSeconds ?? 0);
@@ -160,6 +160,7 @@ function drawWaveform() {
   sliceMarkers.value.forEach((markerTime, index) => {
     const x = timeToX(markerTime, width);
     const markerSlice = slices.value[index + 1];
+    const markerPad = pads.value.find((pad) => pad.id === markerSlice?.padId);
     const isSelected = markerSlice?.id === selectedSliceId.value;
     const isHovered = markerSlice?.padId === hoveredPadId.value;
     const isMarkerHovered = hoveredMarkerIndex.value === index;
@@ -194,7 +195,7 @@ function drawWaveform() {
     context.font = '700 13px Manrope, sans-serif';
     context.textAlign = 'center';
     context.textBaseline = 'middle';
-    context.fillText(String(index + 1), x, flagTop + labelHeight / 2 + 0.5);
+    context.fillText(String((markerPad?.index ?? index) + 1), x, flagTop + labelHeight / 2 + 0.5);
 
     context.fillStyle = '#97a5b3';
     context.font = '12px Manrope, sans-serif';
@@ -235,7 +236,7 @@ function onPointerDown(event: PointerEvent) {
   const markerIndex = findMarkerIndex(event.clientX, event.clientY);
 
   if (markerIndex >= 0) {
-    draggingMarkerIndex.value = markerIndex;
+    draggingMarkerSliceId.value = slices.value[markerIndex + 1]?.id ?? null;
     canvas.style.cursor = 'grabbing';
     projectStore.selectSlice(slices.value[markerIndex + 1]?.id ?? null);
     return;
@@ -264,25 +265,25 @@ function onPointerMove(event: PointerEvent) {
 
   const hoveredIndex = findMarkerIndex(event.clientX, event.clientY);
   hoveredMarkerIndex.value = hoveredIndex >= 0 ? hoveredIndex : null;
-  canvas.style.cursor = draggingMarkerIndex.value !== null
+  canvas.style.cursor = draggingMarkerSliceId.value !== null
     ? 'grabbing'
     : hoveredIndex >= 0
       ? 'pointer'
       : 'crosshair';
 
-  const markerIndex = draggingMarkerIndex.value;
+  const markerSliceId = draggingMarkerSliceId.value;
 
-  if (markerIndex === null) {
+  if (!markerSliceId) {
     return;
   }
 
   const { viewportRect, scrollLeft } = getCanvasMetrics(canvas, viewport);
   const time = xToTime(event.clientX, viewportRect, scrollLeft);
-  projectStore.moveMarker(markerIndex, time);
+  projectStore.moveMarker(markerSliceId, time);
 }
 
 function stopDragging() {
-  draggingMarkerIndex.value = null;
+  draggingMarkerSliceId.value = null;
   const canvas = canvasRef.value;
 
   if (canvas) {

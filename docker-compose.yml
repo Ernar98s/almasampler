@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: almasampler-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: almasampler
+      POSTGRES_PASSWORD: almasampler
+      POSTGRES_DB: almasampler
+    ports:
+      - "5432:5432"
+    volumes:
+      - almasampler-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  almasampler-postgres-data:

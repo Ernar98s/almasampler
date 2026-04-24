@@ -1,0 +1,38 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  googleSub String   @unique
+  email     String   @unique
+  name      String?
+  avatarUrl String?
+  project   Project?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Project {
+  id                    String   @id @default(uuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                  String   @default("Untitled Project")
+  bpm                   Int      @default(120)
+  samplePath            String?
+  sampleOriginalName    String?
+  sampleMimeType        String?
+  sampleDurationSeconds Float?
+  latestRecordPath      String?
+  slicesJson            Json     @default("[]")
+  padsJson              Json     @default("[]")
+  waveformZoom          Float?
+  selectedSliceId       String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}

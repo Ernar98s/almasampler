@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import { storeToRefs } from 'pinia';
 import logoUrl from '@/assets/almasampler-logo.png';
 import supportGifUrl from '@/assets/support-popup.gif';
+import { useAuthStore } from '@/entities/auth/auth.store';
+import { useProjectStore } from '@/entities/project/project.store';
 
+const authStore = useAuthStore();
+const projectStore = useProjectStore();
+const { errorMessage, isAuthenticated, isLoading, user } = storeToRefs(authStore);
+const { projectName, hasLoadedSample } = storeToRefs(projectStore);
 const isMenuOpen = ref(false);
 const isSupportOpen = ref(false);
 
@@ -13,6 +20,18 @@ function toggleMenu() {
 function openSupport() {
   isSupportOpen.value = true;
   isMenuOpen.value = false;
+}
+
+async function login() {
+  const didLogin = await authStore.loginWithGoogle();
+
+  if (didLogin) {
+    isMenuOpen.value = false;
+  }
+}
+
+function logout() {
+  authStore.logout();
 }
 </script>
 
@@ -40,24 +59,71 @@ function openSupport() {
       <img :src="logoUrl" alt="Almasampler" class="app-sidebar__logo-image" />
     </div>
 
-    <nav class="app-sidebar__nav" aria-label="Feature navigation">
-      <button class="app-sidebar__item app-sidebar__item--active" type="button">
-        Sampler
-      </button>
-      <button class="app-sidebar__item" type="button" disabled>
-        Stems
-      </button>
-      <button class="app-sidebar__item" type="button" disabled>
-        Projects
-      </button>
-      <button class="app-sidebar__item" type="button" disabled>
-        Library
-      </button>
-    </nav>
+    <section class="app-sidebar__projects" aria-label="Projects">
+      <div class="app-sidebar__projects-header">
+        <h2>Projects</h2>
+        <button
+          class="app-sidebar__project-add"
+          type="button"
+          disabled
+          title="Multiple projects will be added later"
+          aria-label="Add project"
+        >
+          +
+        </button>
+      </div>
 
-    <button class="app-sidebar__support" type="button" @click="openSupport">
-      Contact / Support
-    </button>
+      <div class="app-sidebar__divider" />
+
+      <button class="app-sidebar__project-card app-sidebar__project-card--active" type="button">
+        <span>{{ hasLoadedSample ? projectName : 'Untitled Project' }}</span>
+      </button>
+    </section>
+
+    <footer class="app-sidebar__footer">
+      <button class="app-sidebar__support" type="button" @click="openSupport">
+        Contact / Support
+      </button>
+
+      <div class="app-sidebar__auth">
+        <template v-if="isAuthenticated">
+          <div class="app-sidebar__user">
+            <img
+              v-if="user?.avatarUrl"
+              :src="user.avatarUrl"
+              alt=""
+              class="app-sidebar__avatar"
+            />
+            <span>{{ user?.name || user?.email }}</span>
+          </div>
+          <button
+            class="app-sidebar__logout"
+            type="button"
+            title="Logout"
+            aria-label="Logout"
+            @click="logout"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 3h9a1 1 0 0 1 1 1v3h-2V5H7v14h6v-2h2v3a1 1 0 0 1-1 1H5V3Z" />
+              <path d="M16.6 7.4 21.2 12l-4.6 4.6-1.4-1.4 2.2-2.2H10v-2h7.4l-2.2-2.2 1.4-1.4Z" />
+            </svg>
+          </button>
+        </template>
+        <button
+          v-else
+          class="app-sidebar__login"
+          type="button"
+          :disabled="isLoading"
+          @click="login"
+        >
+          {{ isLoading ? 'Connecting...' : 'Google acc' }}
+        </button>
+      </div>
+
+      <p v-if="errorMessage" class="app-sidebar__auth-error">
+        {{ errorMessage }}
+      </p>
+    </footer>
   </aside>
 
   <div

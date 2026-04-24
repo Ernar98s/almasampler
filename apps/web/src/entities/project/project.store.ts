@@ -8,6 +8,8 @@ import { renderMonophonicPerformanceToWav } from '@/shared/audio/render-monophon
 import { renderArrangementToWav } from '@/shared/audio/render-arrangement';
 import { buildWaveformPeaks } from '@/shared/audio/waveform-peaks';
 import { playBufferSlice, stopPlayback as stopAudioPlayback } from '@/shared/audio/sample-playback';
+import { apiClient, getStoredAuthToken, type RemoteProject } from '@/shared/api/api-client';
+import { useToastStore } from '@/shared/ui/toast.store';
 
 const MAX_DURATION_SECONDS = 6 * 60;
 const PAD_COUNT = 9;
@@ -35,24 +37,17 @@ export const PAD_KEY_CODES = [
   'Digit8',
   'Digit9'
 ] as const;
+
+function projectNameFromFileName(fileName: string) {
+  return fileName.replace(/\.[^.]+$/, '') || fileName || 'Untitled Project';
+}
+
 function createDefaultPads(): Pad[] {
   return Array.from({ length: PAD_COUNT }, (_, index) => ({
     id: `pad-${index + 1}`,
     index,
     keyBinding: PAD_KEYS[index] ?? '',
     rootNote: 60
-  }));
-}
-
-function createSlicesFromBoundaries(boundaries: number[]): Slice[] {
-  return boundaries.slice(0, -1).map((startTime, index) => ({
-    id: crypto.randomUUID(),
-    startTime,
-    endTime: boundaries[index + 1],
-    rootNote: 60,
-    pitchSemitones: 0,
-    color: PAD_COLORS[index % PAD_COLORS.length],
-    label: `S${index + 1}`
   }));
 }
 
@@ -72,6 +67,18 @@ function deriveBoundariesFromSlices(slices: Slice[], totalDuration: number) {
     .sort((left, right) => left - right);
 }
 
+function createSlicesFromBoundaries(boundaries: number[]): Slice[] {
+  return boundaries.slice(0, -1).map((startTime, index) => ({
+    id: crypto.randomUUID(),
+    startTime,
+    endTime: boundaries[index + 1],
+    rootNote: 60,
+    pitchSemitones: 0,
+    color: PAD_COLORS[index % PAD_COLORS.length],
+    label: `S${index + 1}`
+  }));
+}
+
 function rebuildSlicesFromMarkers(markers: number[], totalDuration: number, pads: Pad[]) {
   const boundaries = [0, ...markers, totalDuration]
     .map((value) => Math.max(0, Math.min(totalDuration, value)))
@@ -85,6 +92,36 @@ function rebuildSlicesFromMarkers(markers: number[], totalDuration: number, pads
     ...slice,
     padId: pads[index]?.id
   }));
+}
+
+function rebuildSlicesPreservingPadIdentity(markerSlices: Slice[], totalDuration: number) {
+  const sortedMarkers = markerSlices
+    .map((slice) => ({
+      ...slice,
+      startTime: Math.max(0.02, Math.min(totalDuration - 0.02, slice.startTime))
+    }))
+    .sort((left, right) => left.startTime - right.startTime)
+    .map((slice, index, ordered) => ({
+      ...slice,
+      startTime:
+        index === 0 ? slice.startTime : Math.max(slice.startTime, ordered[index - 1]!.startTime + 0.02)
+    }));
+  const firstStart = sortedMarkers[0]?.startTime ?? totalDuration;
+  const leadSlice: Slice = {
+    id: crypto.randomUUID(),
+    startTime: 0,
+    endTime: firstStart,
+    rootNote: 60,
+    pitchSemitones: 0
+  };
+
+  return [
+    leadSlice,
+    ...sortedMarkers.map((slice, index) => ({
+      ...slice,
+      endTime: sortedMarkers[index + 1]?.startTime ?? totalDuration
+    }))
+  ];
 }
 
 function createEqualSlices(totalDuration: number, parts: number, pads: Pad[]) {
@@ -128,7 +165,10 @@ function createAutoSlicesFromWaveform(
 }
 
 export const useProjectStore = defineStore('project', () => {
+  const toastStore = useToastStore();
+  const projectName = ref('Untitled Project');
   const sampleFile = ref<SampleFile | null>(null);
+  const sourceSampleFile = ref<File | null>(null);
   const audioBuffer = ref<AudioBuffer | null>(null);
   const waveformPeaks = ref<Float32Array>(new Float32Array());
   const errorMessage = ref('');
@@ -170,6 +210,8 @@ export const useProjectStore = defineStore('project', () => {
   let recordingMetronomeInterval: number | null = null;
   let activePadPlaybackFrame: number | null = null;
   let activePadPlaybackToken = 0;
+  let persistProjectStateTimeout: number | null = null;
+  const isRestoringRemoteProject = ref(false);
   const recordedHits = ref<Array<{ padId: string; startMs: number; endMs: number | null }>>([]);
   const recordedHitCount = computed(() => recordedHits.value.length);
 
@@ -193,6 +235,189 @@ export const useProjectStore = defineStore('project', () => {
     return padMappedSlices.value[0]?.id ?? slices.value[0]?.id ?? null;
   }
 
+  function resetLocalProject() {
+    if (persistProjectStateTimeout !== null) {
+      window.clearTimeout(persistProjectStateTimeout);
+      persistProjectStateTimeout = null;
+    }
+
+    activePadPlaybackToken += 1;
+    clearSequenceTimers();
+    clearPadPlaybackProgress();
+    clearRecordingCountdown();
+    stopPassiveMetronome();
+
+    if (recordingMetronomeInterval !== null) {
+      window.clearInterval(recordingMetronomeInterval);
+      recordingMetronomeInterval = null;
+    }
+
+    void stopPlayback();
+
+    sourceSampleFile.value = null;
+    sampleFile.value = null;
+    audioBuffer.value = null;
+    waveformPeaks.value = new Float32Array();
+    errorMessage.value = '';
+    isDecoding.value = false;
+    zoom.value = 1;
+    pads.value = createDefaultPads();
+    slices.value = [];
+    selectedSliceId.value = null;
+    hoveredPadId.value = null;
+    projectName.value = 'Untitled Project';
+    projectBpm.value = 120;
+    detectedSampleBpm.value = null;
+    pianoRollState.value.notes = [];
+    selectedNoteId.value = null;
+    activeEditorTab.value = 'waveform';
+    isAddingSlice.value = false;
+    playbackCursorBeat.value = -1;
+    isPreviewPlaying.value = false;
+    isSequencePlaying.value = false;
+    isRecording.value = false;
+    recordingCountdown.value = null;
+    metronomeEnabled.value = false;
+    isExporting.value = false;
+    activePadPlayback.value = null;
+    recordedHits.value = [];
+  }
+
+  function hasBackendSession() {
+    return Boolean(getStoredAuthToken());
+  }
+
+  function schedulePersistProjectState(delayMs = 450) {
+    if (!hasBackendSession() || isRestoringRemoteProject.value) {
+      return;
+    }
+
+    if (persistProjectStateTimeout !== null) {
+      window.clearTimeout(persistProjectStateTimeout);
+    }
+
+    persistProjectStateTimeout = window.setTimeout(() => {
+      persistProjectStateTimeout = null;
+      void persistProjectState();
+    }, delayMs);
+  }
+
+  async function persistProjectState() {
+    if (!hasBackendSession()) {
+      return;
+    }
+
+    try {
+      await apiClient.saveProjectState({
+        name: projectName.value,
+        bpm: projectBpm.value,
+        slices: slices.value,
+        pads: pads.value,
+        waveformZoom: zoom.value,
+        selectedSliceId: selectedSliceId.value,
+        sampleDurationSeconds: sampleFile.value?.durationSeconds ?? null
+      });
+    } catch (error) {
+      errorMessage.value = error instanceof Error ? error.message : 'Failed to save project.';
+      toastStore.show(errorMessage.value);
+    }
+  }
+
+  async function uploadCurrentSampleFile() {
+    if (!hasBackendSession() || !sourceSampleFile.value || !sampleFile.value) {
+      return;
+    }
+
+    try {
+      await apiClient.uploadSample(sourceSampleFile.value, sampleFile.value.durationSeconds);
+      await persistProjectState();
+      toastStore.show('Sample saved to project');
+    } catch (error) {
+      errorMessage.value = error instanceof Error ? error.message : 'Failed to upload sample.';
+      toastStore.show(errorMessage.value);
+    }
+  }
+
+  function applyRemoteProjectState(project: RemoteProject) {
+    projectName.value =
+      project.name && project.name !== 'Untitled Project'
+        ? project.name
+        : project.sampleOriginalName
+          ? projectNameFromFileName(project.sampleOriginalName)
+          : 'Untitled Project';
+    projectBpm.value = project.bpm;
+    zoom.value = Math.min(6, Math.max(1, project.waveformZoom ?? zoom.value));
+
+    if (project.pads?.length) {
+      pads.value = project.pads;
+    }
+
+    if (project.slices?.length) {
+      slices.value = project.slices;
+      selectedSliceId.value = project.selectedSliceId ?? getFirstMappedSliceId();
+    }
+  }
+
+  async function loadRemoteProject() {
+    if (!hasBackendSession()) {
+      return;
+    }
+
+    errorMessage.value = '';
+    isRestoringRemoteProject.value = true;
+
+    try {
+      resetLocalProject();
+      isRestoringRemoteProject.value = true;
+      const project = await apiClient.getProject();
+      applyRemoteProjectState(project);
+
+      if (project.samplePath) {
+        const blob = await apiClient.downloadSample();
+
+        if (blob) {
+          const restoredFile = new File(
+            [blob],
+            project.sampleOriginalName || 'restored-sample',
+            { type: project.sampleMimeType || blob.type || 'audio/mpeg' }
+          );
+          const decoded = await decodeAudioFile(restoredFile);
+
+          sourceSampleFile.value = restoredFile;
+          projectName.value = project.name || projectNameFromFileName(restoredFile.name);
+          sampleFile.value = decoded.metadata;
+          audioBuffer.value = decoded.audioBuffer;
+          waveformPeaks.value = buildWaveformPeaks(decoded.audioBuffer, 768);
+          detectedSampleBpm.value = detectApproximateBpm(decoded.audioBuffer);
+          applyRemoteProjectState(project);
+          syncPadsToExistingSliceAssignments();
+        }
+      }
+    } catch (error) {
+      errorMessage.value = error instanceof Error ? error.message : 'Failed to load saved project.';
+      toastStore.show(errorMessage.value);
+    } finally {
+      isRestoringRemoteProject.value = false;
+    }
+  }
+
+  async function syncAuthenticatedProject() {
+    if (!hasBackendSession()) {
+      return;
+    }
+
+    await loadRemoteProject();
+  }
+
+  async function saveLocalProjectToBackend() {
+    try {
+      await uploadCurrentSampleFile();
+    } catch (error) {
+      errorMessage.value = error instanceof Error ? error.message : 'Failed to sync project.';
+      toastStore.show(errorMessage.value);
+    }
+  }
+
   async function loadAudioFile(file: File) {
     errorMessage.value = '';
     isDecoding.value = true;
@@ -204,6 +429,8 @@ export const useProjectStore = defineStore('project', () => {
         throw new Error('Audio file must be 6 minutes or shorter.');
       }
 
+      sourceSampleFile.value = file;
+      projectName.value = projectNameFromFileName(file.name);
       sampleFile.value = decoded.metadata;
       audioBuffer.value = decoded.audioBuffer;
       waveformPeaks.value = buildWaveformPeaks(decoded.audioBuffer, 768);
@@ -219,7 +446,11 @@ export const useProjectStore = defineStore('project', () => {
       projectBpm.value = detectedSampleBpm.value;
       pianoRollState.value.notes = [];
       selectedNoteId.value = null;
+      await uploadCurrentSampleFile();
+      toastStore.show('Sample loaded');
     } catch (error) {
+      sourceSampleFile.value = null;
+      projectName.value = 'Untitled Project';
       sampleFile.value = null;
       audioBuffer.value = null;
       waveformPeaks.value = new Float32Array();
@@ -230,6 +461,7 @@ export const useProjectStore = defineStore('project', () => {
       selectedNoteId.value = null;
       errorMessage.value =
         error instanceof Error ? error.message : 'Failed to decode the selected audio file.';
+      toastStore.show(errorMessage.value);
     } finally {
       isDecoding.value = false;
     }
@@ -237,10 +469,12 @@ export const useProjectStore = defineStore('project', () => {
 
   function setZoom(nextZoom: number) {
     zoom.value = Math.min(6, Math.max(1, nextZoom));
+    schedulePersistProjectState();
   }
 
   function selectSlice(sliceId: string | null) {
     selectedSliceId.value = sliceId;
+    schedulePersistProjectState();
   }
 
   function setHoveredPad(padId: string | null) {
@@ -274,8 +508,16 @@ export const useProjectStore = defineStore('project', () => {
     }));
   }
 
+  function syncPadsToExistingSliceAssignments() {
+    pads.value = pads.value.map((pad) => ({
+      ...pad,
+      sliceId: slices.value.find((slice) => slice.padId === pad.id)?.id
+    }));
+  }
+
   function updateProjectBpm(nextBpm: number) {
     projectBpm.value = Math.min(220, Math.max(40, Math.round(nextBpm || 120)));
+    schedulePersistProjectState();
 
     if (metronomeEnabled.value && !isRecording.value && !isSequencePlaying.value) {
       restartPassiveMetronome();
@@ -447,24 +689,29 @@ export const useProjectStore = defineStore('project', () => {
     const targetSlice = padMappedSlices.value.find((slice) => time >= slice.startTime && time < slice.endTime);
     selectedSliceId.value = targetSlice?.id ?? getFirstMappedSliceId();
     isAddingSlice.value = false;
+    schedulePersistProjectState();
   }
 
-  function moveMarker(markerIndex: number, nextTime: number) {
+  function moveMarker(sliceId: string, nextTime: number) {
     if (!sampleFile.value) {
       return;
     }
 
-    const markers = [...sliceMarkers.value];
+    const markers = slices.value.slice(1).map((slice) => ({ ...slice }));
+    const markerIndex = markers.findIndex((marker) => marker.id === sliceId);
 
-    if (markerIndex < 0 || markerIndex >= markers.length) {
+    if (markerIndex < 0) {
       return;
     }
 
-    const previous = markers[markerIndex - 1] ?? 0;
-    const next = markers[markerIndex + 1] ?? sampleFile.value.durationSeconds;
-    markers[markerIndex] = Math.min(next - 0.02, Math.max(previous + 0.02, nextTime));
-    slices.value = rebuildSlicesFromMarkers(markers, sampleFile.value.durationSeconds, pads.value);
-    assignSlicesToPads();
+    markers[markerIndex] = {
+      ...markers[markerIndex]!,
+      startTime: Math.max(0.02, Math.min(sampleFile.value.durationSeconds - 0.02, nextTime))
+    };
+    slices.value = rebuildSlicesPreservingPadIdentity(markers, sampleFile.value.durationSeconds);
+    syncPadsToExistingSliceAssignments();
+    selectedSliceId.value = sliceId;
+    schedulePersistProjectState();
   }
 
   function deleteSelectedSliceMarker() {
@@ -483,6 +730,7 @@ export const useProjectStore = defineStore('project', () => {
     slices.value = rebuildSlicesFromMarkers(markers, sampleFile.value.durationSeconds, pads.value);
     assignSlicesToPads();
     selectedSliceId.value = getFirstMappedSliceId();
+    schedulePersistProjectState();
   }
 
   function deleteAllSliceMarkers() {
@@ -502,6 +750,7 @@ export const useProjectStore = defineStore('project', () => {
     assignSlicesToPads();
     selectedSliceId.value = getFirstMappedSliceId();
     isAddingSlice.value = false;
+    schedulePersistProjectState();
   }
 
   function autoSlice(parts: 9 | 18 | 27) {
@@ -516,6 +765,7 @@ export const useProjectStore = defineStore('project', () => {
     );
     assignSlicesToPads();
     selectedSliceId.value = getFirstMappedSliceId();
+    schedulePersistProjectState();
   }
 
   function smartSlice(parts: 9 | 18 | 27 = 9) {
@@ -531,6 +781,7 @@ export const useProjectStore = defineStore('project', () => {
     );
     assignSlicesToPads();
     selectedSliceId.value = getFirstMappedSliceId();
+    schedulePersistProjectState();
   }
 
   async function previewSlice(sliceId = selectedSliceId.value) {
@@ -725,6 +976,7 @@ export const useProjectStore = defineStore('project', () => {
 
     if (!sampleFile.value || !recordedHits.value.length) {
       errorMessage.value = 'No pad hits were recorded.';
+      toastStore.show(errorMessage.value);
       return;
     }
 
@@ -779,6 +1031,11 @@ export const useProjectStore = defineStore('project', () => {
         clips,
         totalDurationSeconds
       });
+      if (hasBackendSession()) {
+        await apiClient.uploadRecording(wavBlob);
+        toastStore.show('Recording saved to project');
+      }
+
       const objectUrl = URL.createObjectURL(wavBlob);
       const anchor = document.createElement('a');
       const fileName = sampleFile.value.name.replace(/\.[^.]+$/, '') || 'almasampler-performance';
@@ -793,6 +1050,7 @@ export const useProjectStore = defineStore('project', () => {
     } catch (error) {
       errorMessage.value =
         error instanceof Error ? error.message : 'Failed to export recorded performance.';
+      toastStore.show(errorMessage.value);
     } finally {
       isExporting.value = false;
     }
@@ -938,6 +1196,7 @@ export const useProjectStore = defineStore('project', () => {
   async function exportSequenceToWav() {
     if (!audioBuffer.value || !sampleFile.value || !pianoRollState.value.notes.length) {
       errorMessage.value = 'Add at least one piano roll note before exporting.';
+      toastStore.show(errorMessage.value);
       return;
     }
 
@@ -984,6 +1243,7 @@ export const useProjectStore = defineStore('project', () => {
     } catch (error) {
       errorMessage.value =
         error instanceof Error ? error.message : 'Failed to export arrangement to WAV.';
+      toastStore.show(errorMessage.value);
     } finally {
       isExporting.value = false;
     }
@@ -1006,12 +1266,14 @@ export const useProjectStore = defineStore('project', () => {
     isExporting,
     isAddingSlice,
     isPreviewPlaying,
+    isRestoringRemoteProject,
     activePadPlayback,
     recordedHitCount,
     recordingCountdown,
     isRecording,
     isSequencePlaying,
     loadAudioFile,
+    loadRemoteProject,
     moveMarker,
     movePianoRollNote,
     pads,
@@ -1020,9 +1282,12 @@ export const useProjectStore = defineStore('project', () => {
     playbackCursorBeat,
     previewNote,
     previewSlice,
+    projectName,
     projectBpm,
     redetectSampleBpm,
     resizePianoRollNote,
+    resetLocalProject,
+    saveLocalProjectToBackend,
     sampleFile,
     selectedNote,
     selectedNoteId,
@@ -1036,6 +1301,7 @@ export const useProjectStore = defineStore('project', () => {
     sliceMarkers,
     slices,
     smartSlice,
+    syncAuthenticatedProject,
     startRecording,
     stopPlayback,
     stopRecording,

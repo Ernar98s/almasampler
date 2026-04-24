@@ -14,7 +14,18 @@ defineProps<{
 }>();
 
 const projectStore = useProjectStore();
-const { hasLoadedSample, selectedSlice, slices, isAddingSlice, projectBpm, metronomeEnabled, isRecording, isExporting, recordingCountdown } = storeToRefs(projectStore);
+const {
+  hasLoadedSample,
+  selectedSlice,
+  slices,
+  isAddingSlice,
+  projectBpm,
+  metronomeEnabled,
+  isRecording,
+  isExporting,
+  recordingCountdown,
+  isRestoringRemoteProject
+} = storeToRefs(projectStore);
 const bpmStepper = useHoldStepper((delta) => {
   projectStore.updateProjectBpm(projectBpm.value + delta);
 });
@@ -22,6 +33,10 @@ const bpmStepper = useHoldStepper((delta) => {
 
 <template>
   <div class="stack waveform-panel">
+    <div v-if="isRestoringRemoteProject" class="waveform-restore-loader">
+      <span class="waveform-restore-loader__spinner" />
+      <strong>Loading saved sample...</strong>
+    </div>
     <template v-if="hasLoadedSample">
       <div class="waveform-toolbar">
         <div class="waveform-toolbar-group">

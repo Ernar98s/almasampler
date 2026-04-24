@@ -17,9 +17,17 @@ sudo_run() {
 
 cd "$APP_DIR"
 
+if [[ -f "$APP_DIR/apps/api/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$APP_DIR/apps/api/.env"
+  set +a
+fi
+
 corepack enable >/dev/null 2>&1 || true
 
 pnpm install --frozen-lockfile
+pnpm --filter @almasampler/api prisma:migrate
 pnpm build
 
 sudo_run mkdir -p "$WEB_ROOT_DIR"

@@ -3,3 +3,8 @@ dist
 .DS_Store
 coverage
 *.log
+.env
+.env.*
+!.env.example
+!apps/**/.env.example
+storage
