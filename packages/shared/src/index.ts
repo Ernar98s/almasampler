@@ -35,6 +35,18 @@ export interface NoteEvent {
   velocity: number;
 }
 
+export interface RecordedPadHit {
+  padId: string;
+  startMs: number;
+  endMs: number;
+}
+
+export interface RecordedPerformance {
+  bpm: number;
+  totalDurationMs: number;
+  hits: RecordedPadHit[];
+}
+
 export interface TransportState {
   bpm: number;
   isPlaying: boolean;
@@ -57,6 +69,7 @@ export interface Project {
   sampleFile?: SampleFile;
   slices: Slice[];
   pads: Pad[];
+  lastRecording?: RecordedPerformance | null;
   pianoRoll: PianoRollState;
   transport: TransportState;
   createdAt: string;

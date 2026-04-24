@@ -29,6 +29,7 @@ model Project {
   sampleMimeType        String?
   sampleDurationSeconds Float?
   latestRecordPath      String?
+  latestRecordingJson   Json?
   slicesJson            Json     @default("[]")
   padsJson              Json     @default("[]")
   waveformZoom          Float?

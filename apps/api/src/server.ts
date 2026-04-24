@@ -7,6 +7,7 @@ import jwt from '@fastify/jwt';
 import multipart from '@fastify/multipart';
 import { OAuth2Client } from 'google-auth-library';
 import type { Prisma, Project, User } from '@prisma/client';
+import type { RecordedPerformance } from '@almasampler/shared';
 import { config, assertRequiredConfig } from './config';
 import { prisma } from './prisma';
 import { assertReadableFile, saveProjectAudioFile } from './storage';
@@ -26,6 +27,15 @@ type ProjectStateBody = {
 type JwtPayload = {
   userId: string;
 };
+
+type RecordingRequestBody =
+  | RecordedPerformance
+  | {
+      recording?: RecordedPerformance;
+    }
+  | string
+  | null
+  | undefined;
 
 const app = Fastify({
   logger: true
@@ -67,6 +77,7 @@ function serializeProject(project: Project) {
     sampleMimeType: project.sampleMimeType,
     sampleDurationSeconds: project.sampleDurationSeconds,
     latestRecordPath: project.latestRecordPath,
+    latestRecording: project.latestRecordingJson,
     slices: project.slicesJson,
     pads: project.padsJson,
     waveformZoom: project.waveformZoom,
@@ -84,6 +95,39 @@ function projectNameFromFileName(fileName: string | undefined) {
   }
 
   return path.basename(trimmedName, path.extname(trimmedName)) || trimmedName;
+}
+
+function parseRecordingBody(body: RecordingRequestBody): RecordedPerformance | null {
+  const normalizedBody =
+    typeof body === 'string'
+      ? (JSON.parse(body) as RecordingRequestBody)
+      : body;
+  const candidateUnknown =
+    normalizedBody && typeof normalizedBody === 'object' && 'recording' in normalizedBody
+      ? normalizedBody.recording
+      : normalizedBody;
+  const candidate = candidateUnknown as Partial<RecordedPerformance> | null | undefined;
+
+  if (!candidate || typeof candidate !== 'object' || !Array.isArray(candidate.hits)) {
+    return null;
+  }
+
+  if (
+    typeof candidate.bpm !== 'number' ||
+    typeof candidate.totalDurationMs !== 'number' ||
+    candidate.hits.some(
+      (hit) =>
+        !hit ||
+        typeof hit !== 'object' ||
+        typeof hit.padId !== 'string' ||
+        typeof hit.startMs !== 'number' ||
+        typeof hit.endMs !== 'number'
+    )
+  ) {
+    return null;
+  }
+
+  return candidate as RecordedPerformance;
 }
 
 async function getAuthUser(request: FastifyRequest) {
@@ -302,7 +346,7 @@ app.get('/project/sample', async (request, reply) => {
   return fs.createReadStream(samplePath);
 });
 
-app.post('/project/recording', async (request, reply) => {
+app.post<{ Body: RecordingRequestBody }>('/project/recording', async (request, reply) => {
   const user = await requireAuth(request, reply);
 
   if (!user) {
@@ -310,26 +354,32 @@ app.post('/project/recording', async (request, reply) => {
   }
 
   const project = await getOrCreateProject(user.id);
-  const file = await request.file();
+  let recording: RecordedPerformance | null = null;
 
-  if (!file) {
-    reply.code(400);
-    return { message: 'Recording file is required' };
+  try {
+    recording = parseRecordingBody(request.body);
+  } catch (error) {
+    request.log.warn({
+      message: 'Failed to parse recording payload',
+      error: error instanceof Error ? error.message : String(error)
+    });
   }
 
-  const latestRecordPath = await saveProjectAudioFile({
-    userId: user.id,
-    projectId: project.id,
-    file,
-    baseName: 'latest-record',
-    fallbackExtension: '.wav'
-  });
+  if (!recording) {
+    request.log.warn({
+      message: 'Recording payload is required',
+      bodyType: typeof request.body,
+      hasBody: request.body !== undefined && request.body !== null
+    });
+    reply.code(400);
+    return { message: 'Recording payload is required' };
+  }
   const updated = await prisma.project.update({
     where: {
       id: project.id
     },
     data: {
-      latestRecordPath
+      latestRecordingJson: recording as unknown as Prisma.InputJsonValue
     }
   });
 
@@ -345,16 +395,9 @@ app.get('/project/recording', async (request, reply) => {
   }
 
   const project = await getOrCreateProject(user.id);
-  const latestRecordPath = await assertReadableFile(project.latestRecordPath);
-
-  if (!latestRecordPath) {
-    reply.code(404);
-    return { message: 'Recording not found' };
-  }
-
-  reply.header('content-type', 'audio/wav');
-  reply.header('content-disposition', `inline; filename="${path.basename(latestRecordPath)}"`);
-  return fs.createReadStream(latestRecordPath);
+  return {
+    recording: project.latestRecordingJson
+  };
 });
 
 async function start() {

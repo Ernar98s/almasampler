@@ -7,6 +7,24 @@ export function useSpaceWaveformToggle() {
   const { hasLoadedSample, isRecording } = storeToRefs(projectStore);
 
   function onKeydown(event: KeyboardEvent) {
+    const isUndoShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z';
+
+    if (isUndoShortcut) {
+      const activeElement = document.activeElement;
+      if (
+        activeElement instanceof HTMLInputElement ||
+        activeElement instanceof HTMLTextAreaElement ||
+        activeElement instanceof HTMLSelectElement
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      projectStore.undoFlagChange();
+      return;
+    }
+
     if (event.code !== 'Space') {
       return;
     }

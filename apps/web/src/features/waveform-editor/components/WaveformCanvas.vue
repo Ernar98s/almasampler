@@ -237,6 +237,9 @@ function onPointerDown(event: PointerEvent) {
 
   if (markerIndex >= 0) {
     draggingMarkerSliceId.value = slices.value[markerIndex + 1]?.id ?? null;
+    if (draggingMarkerSliceId.value) {
+      projectStore.beginMarkerDrag(draggingMarkerSliceId.value);
+    }
     canvas.style.cursor = 'grabbing';
     projectStore.selectSlice(slices.value[markerIndex + 1]?.id ?? null);
     return;
@@ -283,6 +286,7 @@ function onPointerMove(event: PointerEvent) {
 }
 
 function stopDragging() {
+  projectStore.endMarkerDrag();
   draggingMarkerSliceId.value = null;
   const canvas = canvasRef.value;
 

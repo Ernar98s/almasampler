@@ -1,6 +1,14 @@
 import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
-import type { NoteEvent, Pad, PianoRollState, SampleFile, Slice } from '@almasampler/shared';
+import type {
+  NoteEvent,
+  Pad,
+  PianoRollState,
+  RecordedPadHit,
+  RecordedPerformance,
+  SampleFile,
+  Slice
+} from '@almasampler/shared';
 import { decodeAudioFile } from '@/shared/audio/decode-audio-file';
 import { detectApproximateBpm } from '@/shared/audio/detect-bpm';
 import { playMetronomeSample } from '@/shared/audio/metronome-sample';
@@ -211,8 +219,15 @@ export const useProjectStore = defineStore('project', () => {
   let activePadPlaybackFrame: number | null = null;
   let activePadPlaybackToken = 0;
   let persistProjectStateTimeout: number | null = null;
+  let pendingDragHistorySliceId: string | null = null;
+  const flagHistory = ref<Array<{
+    slices: Slice[];
+    pads: Pad[];
+    selectedSliceId: string | null;
+  }>>([]);
   const isRestoringRemoteProject = ref(false);
   const recordedHits = ref<Array<{ padId: string; startMs: number; endMs: number | null }>>([]);
+  const lastRecording = ref<RecordedPerformance | null>(null);
   const recordedHitCount = computed(() => recordedHits.value.length);
 
   const hasLoadedSample = computed(() => Boolean(sampleFile.value && audioBuffer.value));
@@ -226,6 +241,10 @@ export const useProjectStore = defineStore('project', () => {
     () => pianoRollState.value.notes.find((note) => note.id === selectedNoteId.value) ?? null
   );
   const padMappedSlices = computed(() => slices.value.slice(getPadSliceOffset()));
+  const canUndoFlagChange = computed(() => flagHistory.value.length > 0);
+  const canReplayLastRecording = computed(
+    () => Boolean(lastRecording.value?.hits.length && audioBuffer.value)
+  );
 
   function getPadSliceOffset() {
     return slices.value.length > LEAD_IN_SLICE_COUNT ? LEAD_IN_SLICE_COUNT : 0;
@@ -281,10 +300,62 @@ export const useProjectStore = defineStore('project', () => {
     isExporting.value = false;
     activePadPlayback.value = null;
     recordedHits.value = [];
+    lastRecording.value = null;
   }
 
   function hasBackendSession() {
     return Boolean(getStoredAuthToken());
+  }
+
+  function cloneSlices(nextSlices: Slice[]) {
+    return nextSlices.map((slice) => ({ ...slice }));
+  }
+
+  function clonePads(nextPads: Pad[]) {
+    return nextPads.map((pad) => ({ ...pad }));
+  }
+
+  function pushFlagHistory() {
+    if (!slices.value.length) {
+      return;
+    }
+
+    const snapshot = {
+      slices: cloneSlices(slices.value),
+      pads: clonePads(pads.value),
+      selectedSliceId: selectedSliceId.value
+    };
+
+    flagHistory.value = [...flagHistory.value.slice(-4), snapshot];
+  }
+
+  function beginMarkerDrag(sliceId: string) {
+    if (pendingDragHistorySliceId === sliceId) {
+      return;
+    }
+
+    pushFlagHistory();
+    pendingDragHistorySliceId = sliceId;
+  }
+
+  function endMarkerDrag() {
+    pendingDragHistorySliceId = null;
+  }
+
+  function undoFlagChange() {
+    const previousState = flagHistory.value[flagHistory.value.length - 1];
+
+    if (!previousState) {
+      return;
+    }
+
+    flagHistory.value = flagHistory.value.slice(0, -1);
+    slices.value = cloneSlices(previousState.slices);
+    pads.value = clonePads(previousState.pads);
+    selectedSliceId.value = previousState.selectedSliceId;
+    pendingDragHistorySliceId = null;
+    schedulePersistProjectState();
+    toastStore.show('Flag change undone');
   }
 
   function schedulePersistProjectState(delayMs = 450) {
@@ -346,6 +417,7 @@ export const useProjectStore = defineStore('project', () => {
           ? projectNameFromFileName(project.sampleOriginalName)
           : 'Untitled Project';
     projectBpm.value = project.bpm;
+    lastRecording.value = project.latestRecording ?? null;
     zoom.value = Math.min(6, Math.max(1, project.waveformZoom ?? zoom.value));
 
     if (project.pads?.length) {
@@ -602,6 +674,65 @@ export const useProjectStore = defineStore('project', () => {
     return (slice.endTime - slice.startTime) / Math.max(0.01, getSlicePlaybackRate(slice));
   }
 
+  function buildRecordedPerformanceFromHits() {
+    const hits: RecordedPadHit[] = recordedHits.value
+      .filter((hit): hit is { padId: string; startMs: number; endMs: number } => hit.endMs !== null)
+      .map((hit) => ({
+        padId: hit.padId,
+        startMs: hit.startMs,
+        endMs: hit.endMs
+      }))
+      .filter((hit) => hit.endMs > hit.startMs);
+
+    if (!hits.length) {
+      return null;
+    }
+
+    return {
+      bpm: projectBpm.value,
+      totalDurationMs: hits[hits.length - 1]!.endMs + 250,
+      hits
+    } satisfies RecordedPerformance;
+  }
+
+  function buildPerformanceClips(recording: RecordedPerformance) {
+    if (!audioBuffer.value) {
+      return [];
+    }
+
+    const oneSampleSeconds = 1 / audioBuffer.value.sampleRate;
+
+    return recording.hits
+      .map((hit) => {
+        const slice = getPadSlice(hit.padId);
+
+        if (!slice) {
+          return null;
+        }
+
+        const startSeconds = hit.startMs / 1000;
+        const endSeconds = hit.endMs / 1000;
+        const naturalDurationSeconds = getSliceNaturalDurationSeconds(slice);
+        const heldDurationSeconds = endSeconds - startSeconds;
+        const outputDurationSeconds = Math.max(
+          0,
+          Math.min(naturalDurationSeconds, heldDurationSeconds - oneSampleSeconds)
+        );
+
+        return {
+          startSeconds,
+          outputDurationSeconds,
+          sliceStartSeconds: slice.startTime,
+          sliceEndSeconds: slice.endTime,
+          playbackRate: getSlicePlaybackRate(slice)
+        };
+      })
+      .filter(
+        (clip): clip is NonNullable<typeof clip> =>
+          clip !== null && clip.outputDurationSeconds > 0
+      );
+  }
+
   function clearPadPlaybackProgress() {
     if (activePadPlaybackFrame !== null) {
       window.cancelAnimationFrame(activePadPlaybackFrame);
@@ -669,6 +800,94 @@ export const useProjectStore = defineStore('project', () => {
     await stopAudioPlayback();
   }
 
+  async function replayLastRecording() {
+    if (!audioBuffer.value || !lastRecording.value?.hits.length) {
+      return;
+    }
+
+    stopSequence();
+    stopPassiveMetronome();
+    isSequencePlaying.value = true;
+
+    for (const hit of lastRecording.value.hits) {
+      const timeoutId = window.setTimeout(() => {
+        const slice = getPadSlice(hit.padId);
+
+        if (!slice || !audioBuffer.value) {
+          return;
+        }
+
+        selectedSliceId.value = slice.id;
+        const playbackToken = startPadPlaybackProgress(
+          hit.padId,
+          slice.id,
+          slice.color,
+          Math.max(0.01, (hit.endMs - hit.startMs) / 1000)
+        );
+
+        void playBufferSlice({
+          audioBuffer: audioBuffer.value,
+          startTime: slice.startTime,
+          endTime: slice.endTime,
+          playbackRate: getSlicePlaybackRate(slice),
+          outputDurationSeconds: Math.max(0.01, (hit.endMs - hit.startMs) / 1000),
+          onEnded: () => {
+            finishPadPlayback(playbackToken);
+          }
+        });
+      }, hit.startMs);
+
+      sequenceTimeouts.push(timeoutId);
+    }
+
+    const stopTimeoutId = window.setTimeout(() => {
+      stopSequence();
+    }, lastRecording.value.totalDurationMs);
+    sequenceTimeouts.push(stopTimeoutId);
+  }
+
+  async function exportLastRecordingToWav() {
+    if (!audioBuffer.value || !sampleFile.value || !lastRecording.value) {
+      return;
+    }
+
+    isExporting.value = true;
+    errorMessage.value = '';
+
+    try {
+      const clips = buildPerformanceClips(lastRecording.value);
+
+      if (!clips.length) {
+        errorMessage.value = 'Last recording has no playable hits.';
+        toastStore.show(errorMessage.value);
+        return;
+      }
+
+      const wavBlob = await renderMonophonicPerformanceToWav({
+        sourceBuffer: audioBuffer.value,
+        clips,
+        totalDurationSeconds: lastRecording.value.totalDurationMs / 1000
+      });
+      const objectUrl = URL.createObjectURL(wavBlob);
+      const anchor = document.createElement('a');
+      const fileName = sampleFile.value.name.replace(/\.[^.]+$/, '') || 'almasampler-performance';
+
+      anchor.href = objectUrl;
+      anchor.download = `${fileName}-recording.wav`;
+      anchor.click();
+
+      window.setTimeout(() => {
+        URL.revokeObjectURL(objectUrl);
+      }, 1000);
+    } catch (error) {
+      errorMessage.value =
+        error instanceof Error ? error.message : 'Failed to export last recording.';
+      toastStore.show(errorMessage.value);
+    } finally {
+      isExporting.value = false;
+    }
+  }
+
   async function redetectSampleBpm() {
     if (!audioBuffer.value) {
       return;
@@ -682,6 +901,7 @@ export const useProjectStore = defineStore('project', () => {
       return;
     }
 
+    pushFlagHistory();
     const markers = [...sliceMarkers.value, time]
       .filter((value) => value > 0.02 && value < sampleFile.value!.durationSeconds - 0.02);
     slices.value = rebuildSlicesFromMarkers(markers, sampleFile.value.durationSeconds, pads.value);
@@ -723,6 +943,7 @@ export const useProjectStore = defineStore('project', () => {
       return;
     }
 
+    pushFlagHistory();
     const markers = sliceMarkers.value.filter(
       (markerTime) => Math.abs(markerTime - selectedSlice.value!.startTime) > 0.001
     );
@@ -738,6 +959,7 @@ export const useProjectStore = defineStore('project', () => {
       return;
     }
 
+    pushFlagHistory();
     const preservedLeadMarker = sliceMarkers.value[0];
     const markersToKeep =
       preservedLeadMarker !== undefined ? [preservedLeadMarker] : [];
@@ -758,6 +980,7 @@ export const useProjectStore = defineStore('project', () => {
       return;
     }
 
+    pushFlagHistory();
     slices.value = createEqualSlices(
       sampleFile.value.durationSeconds,
       parts + LEAD_IN_SLICE_COUNT,
@@ -773,6 +996,7 @@ export const useProjectStore = defineStore('project', () => {
       return;
     }
 
+    pushFlagHistory();
     slices.value = createAutoSlicesFromWaveform(
       waveformPeaks.value,
       sampleFile.value.durationSeconds,
@@ -980,79 +1204,26 @@ export const useProjectStore = defineStore('project', () => {
       return;
     }
 
-    isExporting.value = true;
-
     try {
-      const oneSampleSeconds = audioBuffer.value ? 1 / audioBuffer.value.sampleRate : 0;
-      const clips = recordedHits.value
-        .map((hit) => {
-          const slice = getPadSlice(hit.padId);
+      const performance = buildRecordedPerformanceFromHits();
 
-          if (!slice) {
-            return null;
-          }
-
-          const startSeconds = hit.startMs / 1000;
-          const endSeconds = (hit.endMs ?? hit.startMs) / 1000;
-          const naturalDurationSeconds = getSliceNaturalDurationSeconds(slice);
-          const gapUntilNextHitSeconds = endSeconds - startSeconds;
-          const clipDurationSeconds = Math.max(
-            0,
-            Math.min(naturalDurationSeconds, gapUntilNextHitSeconds - oneSampleSeconds)
-          );
-
-          return {
-            startSeconds,
-            outputDurationSeconds: clipDurationSeconds,
-            sliceStartSeconds: slice.startTime,
-            sliceEndSeconds: slice.endTime,
-            playbackRate: getSlicePlaybackRate(slice)
-          };
-        })
-        .filter(
-          (clip): clip is NonNullable<typeof clip> =>
-            clip !== null && clip.outputDurationSeconds > 0
-        );
-
-      if (!clips.length || !audioBuffer.value) {
+      if (!performance) {
         errorMessage.value = 'No playable pad hits were recorded.';
+        toastStore.show(errorMessage.value);
         return;
       }
 
-      const totalDurationSeconds =
-        clips.reduce(
-          (maxDuration, clip) =>
-            Math.max(maxDuration, clip.startSeconds + clip.outputDurationSeconds),
-          0
-        ) + 0.25;
+      lastRecording.value = performance;
 
-      const wavBlob = await renderMonophonicPerformanceToWav({
-        sourceBuffer: audioBuffer.value,
-        clips,
-        totalDurationSeconds
-      });
       if (hasBackendSession()) {
-        await apiClient.uploadRecording(wavBlob);
-        toastStore.show('Recording saved to project');
+        await apiClient.saveRecording(performance);
+        toastStore.show('Last record progression saved');
       }
-
-      const objectUrl = URL.createObjectURL(wavBlob);
-      const anchor = document.createElement('a');
-      const fileName = sampleFile.value.name.replace(/\.[^.]+$/, '') || 'almasampler-performance';
-
-      anchor.href = objectUrl;
-      anchor.download = `${fileName}-recording.wav`;
-      anchor.click();
-
-      window.setTimeout(() => {
-        URL.revokeObjectURL(objectUrl);
-      }, 1000);
+      await exportLastRecordingToWav();
     } catch (error) {
       errorMessage.value =
         error instanceof Error ? error.message : 'Failed to export recorded performance.';
       toastStore.show(errorMessage.value);
-    } finally {
-      isExporting.value = false;
     }
   }
 
@@ -1260,6 +1431,7 @@ export const useProjectStore = defineStore('project', () => {
     deleteSelectedNote,
     detectedSampleBpm,
     errorMessage,
+    exportLastRecordingToWav,
     exportSequenceToWav,
     hasLoadedSample,
     isDecoding,
@@ -1268,6 +1440,10 @@ export const useProjectStore = defineStore('project', () => {
     isPreviewPlaying,
     isRestoringRemoteProject,
     activePadPlayback,
+    beginMarkerDrag,
+    canReplayLastRecording,
+    canUndoFlagChange,
+    lastRecording,
     recordedHitCount,
     recordingCountdown,
     isRecording,
@@ -1284,6 +1460,7 @@ export const useProjectStore = defineStore('project', () => {
     previewSlice,
     projectName,
     projectBpm,
+    replayLastRecording,
     redetectSampleBpm,
     resizePianoRollNote,
     resetLocalProject,
@@ -1302,6 +1479,7 @@ export const useProjectStore = defineStore('project', () => {
     slices,
     smartSlice,
     syncAuthenticatedProject,
+    endMarkerDrag,
     startRecording,
     stopPlayback,
     stopRecording,
@@ -1309,6 +1487,7 @@ export const useProjectStore = defineStore('project', () => {
     toggleAddSliceMode,
     toggleMetronome,
     triggerPad,
+    undoFlagChange,
     updateProjectBpm,
     waveformPeaks,
     hoveredPadId,

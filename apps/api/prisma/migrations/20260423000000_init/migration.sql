@@ -22,6 +22,7 @@ CREATE TABLE "Project" (
     "sampleMimeType" TEXT,
     "sampleDurationSeconds" DOUBLE PRECISION,
     "latestRecordPath" TEXT,
+    "latestRecordingJson" JSONB,
     "slicesJson" JSONB NOT NULL DEFAULT '[]',
     "padsJson" JSONB NOT NULL DEFAULT '[]',
     "waveformZoom" DOUBLE PRECISION,

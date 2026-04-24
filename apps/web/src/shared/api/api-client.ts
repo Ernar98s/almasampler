@@ -1,4 +1,4 @@
-import type { Pad, Slice } from '@almasampler/shared';
+import type { Pad, RecordedPerformance, Slice } from '@almasampler/shared';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 const TOKEN_STORAGE_KEY = 'almasampler.authToken';
@@ -19,6 +19,7 @@ export type RemoteProject = {
   sampleMimeType?: string | null;
   sampleDurationSeconds?: number | null;
   latestRecordPath?: string | null;
+  latestRecording?: RecordedPerformance | null;
   slices: Slice[];
   pads: Pad[];
   waveformZoom?: number | null;
@@ -122,13 +123,14 @@ export const apiClient = {
     return response.blob();
   },
 
-  async uploadRecording(blob: Blob) {
-    const formData = new FormData();
-    formData.append('file', blob, 'latest-record.wav');
-
+  async saveRecording(recording: RecordedPerformance) {
     return request<RemoteProject>('/project/recording', {
       method: 'POST',
-      body: formData
+      body: JSON.stringify(recording)
     });
+  },
+
+  async getRecording() {
+    return request<{ recording: RecordedPerformance | null }>('/project/recording');
   }
 };
