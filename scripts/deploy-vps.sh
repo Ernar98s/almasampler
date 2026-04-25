@@ -15,6 +15,29 @@ sudo_run() {
   printf '%s\n' "$SUDO_PASSWORD" | sudo -S -p '' "$@"
 }
 
+wait_for_http() {
+  local url="$1"
+  local max_attempts="${2:-20}"
+  local delay_seconds="${3:-1}"
+  local host_header="${4:-}"
+  local attempt=1
+  local curl_args=(-fsS)
+
+  if [[ -n "$host_header" ]]; then
+    curl_args+=(-H "$host_header")
+  fi
+
+  until curl "${curl_args[@]}" "$url" >/dev/null; do
+    if (( attempt >= max_attempts )); then
+      echo "Health check failed for $url after $attempt attempts"
+      return 1
+    fi
+
+    sleep "$delay_seconds"
+    attempt=$((attempt + 1))
+  done
+}
+
 cd "$APP_DIR"
 
 if [[ -f "$APP_DIR/apps/api/.env" ]]; then
@@ -35,7 +58,7 @@ sudo_run cp -r "$WEB_DIST_DIR"/. "$WEB_ROOT_DIR"/
 sudo_run systemctl restart almasampler-api
 sudo_run systemctl reload nginx
 
-curl -fsS http://127.0.0.1:3001/health >/dev/null
-curl -fsS -H 'Host: almasampler.com' http://127.0.0.1/health >/dev/null
+wait_for_http http://127.0.0.1:3001/health 30 1
+wait_for_http http://127.0.0.1/health 30 1 'Host: almasampler.com'
 
 echo "Deploy finished successfully"
