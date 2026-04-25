@@ -86,6 +86,8 @@ a,
   padding: 18px;
   border: 1px solid var(--line);
   background: #ffffff;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .app-sidebar__logo {
@@ -263,6 +265,8 @@ a,
   display: flex;
   flex-direction: column;
   gap: 10px;
+  width: 100%;
+  min-width: 0;
 }
 
 .app-sidebar__guest-hint {
@@ -275,6 +279,7 @@ a,
 
 .app-sidebar__support {
   width: 100%;
+  min-width: 0;
 }
 
 .app-sidebar__auth {
@@ -282,6 +287,8 @@ a,
   align-items: stretch;
   flex-direction: row;
   gap: 10px;
+  width: 100%;
+  min-width: 0;
 }
 
 .app-sidebar__user {
@@ -323,6 +330,7 @@ a,
 
 .app-sidebar__login {
   width: 100%;
+  min-width: 0;
   justify-content: center;
   gap: 10px;
 }
@@ -366,7 +374,7 @@ a,
 .app-sidebar__burger {
   position: fixed;
   top: 14px;
-  left: 14px;
+  right: 14px;
   z-index: 45;
   width: 48px;
   height: 48px;
@@ -637,6 +645,54 @@ a,
   border-style: dashed;
   border-width: 1.5px;
   background: rgba(87, 117, 144, 0.08);
+}
+
+.upload-dropzone__file-trigger {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.upload-dropzone__mic-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid rgba(240, 138, 75, 0.38);
+  background: rgba(240, 138, 75, 0.12);
+  color: var(--tangerine);
+  font-weight: 800;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    transform 120ms ease;
+}
+
+.upload-dropzone__mic-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: rgba(240, 138, 75, 0.18);
+}
+
+.upload-dropzone__mic-button[aria-pressed='true'] {
+  border-color: rgba(196, 59, 47, 0.4);
+  background: rgba(196, 59, 47, 0.12);
+  color: #c43b2f;
+}
+
+.upload-dropzone__mic-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.upload-dropzone__mic-button svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
 }
 
 .upload-dropzone span {
@@ -1363,10 +1419,15 @@ a,
     left: 0;
     z-index: 40;
     width: min(280px, calc(100vw - 40px));
-    min-height: 100vh;
+    max-width: calc(100vw - 24px);
+    height: 100dvh;
+    min-height: 100dvh;
     padding-top: 74px;
+    padding-bottom: 16px;
     transform: translateX(-110%);
     transition: transform 180ms ease;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
   .app-sidebar--open {
